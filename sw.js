@@ -1,5 +1,5 @@
 // 讓名片盒在沒有網路時也能打開。改版時把版本號 +1。
-const CACHE = "cardbox-v5";
+const CACHE = "cardbox-v6";
 const CORE = [
   "./", "./index.html", "./manifest.webmanifest",
   "./icons/logo.png", "./icons/favicon.png", "./icons/apple-touch-icon.png",
@@ -34,7 +34,11 @@ self.addEventListener("fetch", e => {
   }
 
   // 同站檔案與 Google 字型：快取優先
-  if (url.origin === location.origin || url.hostname.endsWith("gstatic.com") || url.hostname.endsWith("googleapis.com")) {
+  // 只快取本站檔案、Google 字型和 Firebase 程式庫；雲端同步的連線一律直接走網路
+  const cacheable = url.origin === location.origin
+    || url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com"
+    || (url.hostname === "www.gstatic.com" && url.pathname.startsWith("/firebasejs/"));
+  if (cacheable) {
     e.respondWith(
       caches.match(req).then(hit => hit || fetch(req).then(res => {
         if (res.ok || res.type === "opaque") { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
