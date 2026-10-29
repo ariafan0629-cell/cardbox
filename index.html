@@ -83,6 +83,13 @@ main .inner{padding-block:16px 110px}
 .name{font-size:1.1rem;font-weight:700;line-height:1.3}
 .role{color:var(--muted);font-size:.83rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .name-en{font-family:var(--f-body);font-weight:500;font-size:.82rem;color:var(--muted);margin-left:8px;letter-spacing:.02em}
+.role.more{font-size:.76rem}
+.org-list{display:grid;gap:8px}
+.org-item b{font-weight:700}
+.org-item .sub2{font-size:.82rem;color:var(--muted)}
+.org-row{border:1px solid var(--line);border-radius:10px;padding:10px;display:grid;gap:8px;background:var(--surface)}
+.org-row .org-head{display:flex;justify-content:space-between;align-items:center;font-size:.78rem;color:var(--muted)}
+.org-row .org-head button{border:0;background:var(--steel-1);border-radius:6px;padding:2px 10px;font-size:.78rem}
 .role.en{font-size:.76rem;letter-spacing:.02em}
 .line-id{font-family:var(--f-mono);font-size:.75rem;color:var(--muted);margin-top:2px}
 .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
@@ -239,11 +246,18 @@ let cards=[]; const urls=new Map(); let filter="全部"; let query="";
 async function photoURL(id){if(urls.has(id))return urls.get(id);const b=await photoGet(id);const u=b?URL.createObjectURL(b):"";urls.set(id,u);return u}
 function dropURL(id){const u=urls.get(id);if(u)URL.revokeObjectURL(u);urls.delete(id)}
 
+/* ---------- affiliations: a person can belong to several companies / associations ---------- */
+function orgsOf(c){
+  if(Array.isArray(c.orgs)&&c.orgs.length)return c.orgs;
+  return (c.company||c.companyEn||c.title)?[{name:c.company||"",nameEn:c.companyEn||"",title:c.title||""}]:[];
+}
+const orgLabel=o=>o.name||o.nameEn||"";
+
 /* ---------- render ---------- */
 function matches(c){
   if(filter!=="全部"&&(c.industry||"其他")!==filter)return false;
   if(!query)return true;
-  const hay=[c.name,c.nameEn,c.company,c.companyEn,c.title,c.industry,c.lineId,c.phone,c.email,c.metAt,c.notes,...(c.skills||[]),...(c.socials||[]).map(s=>s.handle)].join(" ").toLowerCase();
+  const hay=[c.name,c.nameEn,...orgsOf(c).flatMap(o=>[o.name,o.nameEn,o.title]),c.industry,c.lineId,c.phone,c.email,c.metAt,c.notes,...(c.skills||[]),...(c.socials||[]).map(s=>s.handle)].join(" ").toLowerCase();
   return query.toLowerCase().split(/\s+/).every(w=>hay.includes(w));
 }
 function cardHTML(c,src,ex){
@@ -251,7 +265,7 @@ function cardHTML(c,src,ex){
     <div class="thumb">${src?`<img src="${esc(src)}" alt="" loading="lazy">`:"無照片"}</div>
     <div class="who">
       <div class="name">${esc(c.name||c.nameEn||"（未命名）")}${c.name&&c.nameEn?`<span class="name-en">${esc(c.nameEn)}</span>`:""}</div>
-      <div class="role">${esc([c.title,c.company||c.companyEn].filter(Boolean).join(" · "))}</div>${c.company&&c.companyEn?`<div class="role en">${esc(c.companyEn)}</div>`:""}
+      ${(()=>{const os=orgsOf(c),o=os[0];if(!o)return"";return `<div class="role">${esc([o.title,orgLabel(o)].filter(Boolean).join(" · "))}</div>${o.name&&o.nameEn?`<div class="role en">${esc(o.nameEn)}</div>`:""}${os.length>1?`<div class="role more">另有 ${os.length-1} 個公司／組織：${esc(os.slice(1).map(orgLabel).filter(Boolean).join("、"))}</div>`:""}`})()}
       ${c.lineId?`<div class="line-id">LINE ${esc(c.lineId)}</div>`:""}
       <div class="chips">${c.industry?`<span class="chip ind">${esc(c.industry)}</span>`:""}${(c.skills||[]).slice(0,3).map(s=>`<span class="chip">${esc(s)}</span>`).join("")}</div>
     </div></button>`;
@@ -408,7 +422,7 @@ async function showDetail(c,ex){
   openSheet(`<div class="sheet-head"><h2>${esc(c.name||c.nameEn||"（未命名）")}${c.name&&c.nameEn?`<span class="name-en">${esc(c.nameEn)}</span>`:""}</h2><button class="x" type="button" data-close aria-label="關閉">×</button></div>
     ${src?`<img class="photo-big" src="${esc(src)}" alt="名片照片">`:""}
     <dl class="kv">
-      ${row("公司",c.company)}${row("公司英文名",c.companyEn)}${row("職稱",c.title)}${row("產業",c.industry)}
+      ${(()=>{const os=orgsOf(c);if(!os.length)return"";return `<dt>${os.length>1?"公司／組織":"公司"}</dt><dd><div class="org-list">${os.map(o=>`<div class="org-item"><b>${esc(orgLabel(o))}</b>${o.name&&o.nameEn?` <span class="sub2">${esc(o.nameEn)}</span>`:""}${o.title?`<div class="sub2">${esc(o.title)}</div>`:""}</div>`).join("")}</div></dd>`})()}${row("產業",c.industry)}
       ${c.skills?.length?`<dt>專長</dt><dd><div class="chips" style="margin:0">${c.skills.map(s=>`<span class="chip">${esc(s)}</span>`).join("")}</div></dd>`:""}
       ${row("賴 ID",c.lineId,true)}${row("電話",c.phone,true)}${row("Email",c.email,true)}
       ${c.socials?.length?`<dt>社群</dt><dd class="socials">${c.socials.map(socialLink).join("")}</dd>`:""}
@@ -456,12 +470,10 @@ async function showForm(c,fromMemo,prefill){
       <label class="f">姓名<input id="f_name" value="${esc(c.name)}" autocomplete="off"></label>
       <label class="f">英文名<input id="f_nameEn" value="${esc(c.nameEn)}" placeholder="例如：Kevin Wang" autocapitalize="words" autocomplete="off"></label>
     </div>
+    <div class="legend">公司與組織（第一筆是主要的）</div>
+    <div id="orgList" style="display:grid;gap:8px"></div>
+    <div><button class="btn" type="button" id="addOrg">＋ 新增公司或組織</button></div>
     <div class="row">
-      <label class="f">公司<input id="f_company" value="${esc(c.company)}" autocomplete="off"></label>
-      <label class="f">公司英文名<input id="f_companyEn" value="${esc(c.companyEn)}" placeholder="例如：TSMC" autocapitalize="words" autocomplete="off"></label>
-    </div>
-    <div class="row">
-      <label class="f">職稱<input id="f_title" value="${esc(c.title)}" autocomplete="off"></label>
       <label class="f">產業類別<select id="f_industry"><option value="">選擇產業</option>${indOpts.map(i=>`<option${i===c.industry?" selected":""}>${esc(i)}</option>`).join("")}</select></label>
     </div>
     <label class="f">專業技能（用逗號或空格分開）<input id="f_skills" value="${esc((c.skills||[]).join("、"))}" placeholder="例如：攝影、短影音剪輯、Python" autocomplete="off"></label>
@@ -477,6 +489,19 @@ async function showForm(c,fromMemo,prefill){
     <label class="f">備註<textarea id="f_notes">${esc(c.notes)}</textarea></label>
     <div class="actions"><button class="btn primary" type="submit" id="saveBtn">儲存</button><button class="btn" type="button" data-close>取消</button></div>
   </form>`);
+  const orgList=$("#orgList");
+  function orgRow(o={}){
+    const d=document.createElement("div");d.className="org-row";
+    d.innerHTML=`<div class="org-head"><span class="org-no"></span><button type="button">移除</button></div>
+      <div class="row"><label class="f">公司／組織名稱<input data-k="name" value="${esc(o.name)}" placeholder="例如：台積電、台中青商會" autocomplete="off"></label>
+      <label class="f">英文名稱<input data-k="nameEn" value="${esc(o.nameEn)}" placeholder="例如：TSMC" autocapitalize="words" autocomplete="off"></label></div>
+      <label class="f">職稱／角色<input data-k="title" value="${esc(o.title)}" placeholder="例如：製程工程師、理事" autocomplete="off"></label>`;
+    d.querySelector(".org-head button").onclick=()=>{d.remove();numberOrgs()};
+    orgList.appendChild(d);numberOrgs();
+  }
+  function numberOrgs(){[...orgList.children].forEach((r,i)=>{r.querySelector(".org-no").textContent=i===0?"主要":"第 "+(i+1)+" 個";r.querySelector(".org-head button").hidden=orgList.children.length<2&&i===0})}
+  const startOrgs=orgsOf(c);(startOrgs.length?startOrgs:[{}]).forEach(o=>orgRow(o));
+  $("#addOrg").onclick=()=>{orgRow();orgList.lastElementChild.querySelector("input").focus()};
   const socList=$("#socList");
   function socRow(p="Instagram",h=""){
     const d=document.createElement("div");d.className="soc-row";
@@ -495,12 +520,14 @@ async function showForm(c,fromMemo,prefill){
   $("#cardForm").onsubmit=async e=>{
     e.preventDefault();
     const v=k=>$("#f_"+k).value.trim();
-    const out={...c,name:v("name"),nameEn:v("nameEn"),company:v("company"),companyEn:v("companyEn"),title:v("title"),industry:v("industry"),
+    const orgs=[...orgList.children].map(r=>{const g=k=>r.querySelector(`[data-k="${k}"]`).value.trim();return {name:g("name"),nameEn:g("nameEn"),title:g("title")}}).filter(o=>o.name||o.nameEn||o.title);
+    const p0=orgs[0]||{};
+    const out={...c,name:v("name"),nameEn:v("nameEn"),orgs,company:p0.name||"",companyEn:p0.nameEn||"",title:p0.title||"",industry:v("industry"),
       skills:v("skills").split(/[,，、\s]+/).filter(Boolean),
       lineId:v("lineId"),phone:v("phone"),email:v("email"),metAt:v("metAt"),notes:v("notes"),
       socials:[...socList.children].map(r=>({platform:r.querySelector("select").value,handle:r.querySelector("input").value.trim()})).filter(x=>x.handle),
       updatedAt:Date.now()};
-    if(!out.name&&!out.nameEn&&!out.company&&!out.companyEn&&!pending&&!out.hasPhoto){toast("至少填姓名或公司，或拍一張名片");return}
+    if(!out.name&&!out.nameEn&&!orgs.length&&!pending&&!out.hasPhoto){toast("至少填姓名或公司，或拍一張名片");return}
     const btn=$("#saveBtn");btn.disabled=true;btn.textContent="儲存中…";
     try{
       if(pending){await photoPut(out.id,pending);out.hasPhoto=true;dropURL(out.id)}
@@ -634,7 +661,7 @@ async function importBackup(file){
   closeSheet();await reload();toast(`已匯入 ${n} 張名片`);
 }
 async function exportCSV(){
-  const cols=[["姓名","name"],["英文名","nameEn"],["公司","company"],["公司英文名","companyEn"],["職稱","title"],["產業","industry"],["專長",c=>(c.skills||[]).join("、")],["賴ID","lineId"],["電話","phone"],["Email","email"],["社群",c=>(c.socials||[]).map(s=>s.platform+":"+s.handle).join(" | ")],["認識於","metAt"],["備註","notes"]];
+  const cols=[["姓名","name"],["英文名","nameEn"],["公司／組織",c=>orgsOf(c).map(orgLabel).join(" | ")],["英文名稱",c=>orgsOf(c).map(o=>o.nameEn).join(" | ")],["職稱",c=>orgsOf(c).map(o=>o.title).join(" | ")],["產業","industry"],["專長",c=>(c.skills||[]).join("、")],["賴ID","lineId"],["電話","phone"],["Email","email"],["社群",c=>(c.socials||[]).map(s=>s.platform+":"+s.handle).join(" | ")],["認識於","metAt"],["備註","notes"]];
   const q=v=>`"${String(v??"").replace(/"/g,'""')}"`;
   const lines=[cols.map(c=>q(c[0])).join(",")].concat(cards.map(c=>cols.map(([,k])=>q(typeof k==="function"?k(c):c[k])).join(",")));
   const blob=new Blob(["﻿"+lines.join("\r\n")],{type:"text/csv"});
