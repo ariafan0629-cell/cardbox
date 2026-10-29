@@ -96,7 +96,29 @@ main .inner{padding-block:16px 110px}
 .install p{margin:0;font-size:.88rem;flex:1;min-width:0}
 .install b{font-weight:700}
 
-.fab{position:fixed;right:calc(18px + env(safe-area-inset-right,0px));bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:6;border:1px solid #2a2d32;background:var(--black);color:var(--on-black);padding:14px 22px;border-radius:999px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.3);display:flex;gap:8px;align-items:center}
+.dock{position:fixed;right:calc(18px + env(safe-area-inset-right,0px));bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:6;display:flex;gap:10px;align-items:center}
+.fab{border:1px solid #2a2d32;background:var(--black);color:var(--on-black);padding:14px 20px;border-radius:999px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.3);display:flex;gap:8px;align-items:center}
+.fab.memo{background:var(--metal);color:#0d0e10;border-color:var(--steel-2)}
+.fab.memo span{background:var(--black);color:var(--on-black)}
+.inbox{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:1px solid var(--steel-2);background:var(--surface);border-radius:10px;padding:12px 14px;margin-bottom:14px}
+.inbox .num{font-family:var(--f-mono);font-weight:700;min-width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--ind-bg);color:var(--ind-fg)}
+.inbox .txt{flex:1;min-width:0}
+.inbox .txt b{display:block}
+.inbox .txt span{font-size:.8rem;color:var(--muted)}
+.mic-wrap{display:grid;justify-items:center;gap:10px;padding-block:6px 4px}
+.mic{width:96px;height:96px;border-radius:50%;border:1px solid var(--steel-2);background:var(--metal);color:#0d0e10;display:grid;place-items:center;box-shadow:var(--shadow)}
+.mic svg{width:38px;height:38px}
+.mic.on{background:var(--danger);color:#fff;border-color:var(--danger)}
+@media (prefers-reduced-motion:no-preference){.mic.on{animation:pulse 1.4s ease-in-out infinite}@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(179,38,30,.45)}50%{box-shadow:0 0 0 14px rgba(179,38,30,0)}}}
+.mic-state{font-size:.88rem;color:var(--muted);text-align:center;min-height:1.4em}
+.timer{font-family:var(--f-mono);font-size:.9rem}
+.memo-item{border:1px solid var(--line);border-radius:10px;padding:12px;display:grid;gap:8px;background:var(--bg)}
+.memo-meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:.78rem;color:var(--muted)}
+.memo-meta .place{background:var(--steel-1);color:var(--ink);padding:1px 7px;border-radius:4px}
+.memo-text{white-space:pre-wrap;overflow-wrap:anywhere}
+.memo-item audio,.memo-ref audio{width:100%;height:36px}
+.memo-ref{border:1px dashed var(--steel-2);border-radius:8px;padding:10px 12px;display:grid;gap:6px;font-size:.88rem}
+.memo-ref .lbl{font-size:.75rem;color:var(--muted);letter-spacing:.04em}
 .fab span{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--metal);color:#0d0e10;font-weight:900}
 
 /* sheet */
@@ -140,7 +162,7 @@ textarea{resize:vertical;min-height:70px}
 .hint{font-size:.8rem;color:var(--muted)}
 .menu-list{display:grid;gap:10px}
 .menu-list .btn{text-align:left}
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(86px + env(safe-area-inset-bottom,0px));background:var(--black);color:var(--on-black);padding:9px 16px;border-radius:8px;z-index:40;font-size:.88rem;border:1px solid #3a3e45}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(92px + env(safe-area-inset-bottom,0px));background:var(--black);color:var(--on-black);padding:9px 16px;border-radius:8px;z-index:40;font-size:.88rem;border:1px solid #3a3e45}
 @media (prefers-reduced-motion:no-preference){.sheet{animation:up .22s ease-out}@keyframes up{from{opacity:.4;translate:0 24px}to{opacity:1;translate:0 0}}}
 </style>
 </head>
@@ -167,6 +189,7 @@ textarea{resize:vertical;min-height:70px}
 <main class="gutter">
   <div class="inner">
     <div id="installTip" class="install" hidden></div>
+    <button id="inbox" class="inbox" type="button" hidden></button>
     <div id="grid" class="grid"></div>
     <div id="empty" class="empty" hidden>
       <h2>名片盒還是空的</h2>
@@ -174,7 +197,10 @@ textarea{resize:vertical;min-height:70px}
   </div>
 </main>
 
-<button class="fab" id="addBtn" type="button"><span aria-hidden="true">＋</span>新增名片</button>
+<div class="dock">
+  <button class="fab memo" id="memoBtn" type="button" aria-label="口述速記"><span aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2z"/></svg></span>速記</button>
+  <button class="fab" id="addBtn" type="button"><span aria-hidden="true">＋</span>新增名片</button>
+</div>
 <div id="scrim" class="scrim" hidden></div>
 <section id="sheet" class="sheet" hidden role="dialog" aria-modal="true"></section>
 <div id="toast" class="toast" hidden role="status"></div>
@@ -190,8 +216,10 @@ function toast(m){const t=$("#toast");t.textContent=m;t.hidden=false;clearTimeou
 
 /* ---------- IndexedDB (cards + photo blobs, kept on this phone) ---------- */
 let idb;
-function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open("cardbox",1);
-  r.onupgradeneeded=()=>{const d=r.result;d.createObjectStore("cards",{keyPath:"id"});d.createObjectStore("photos")};
+function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open("cardbox",2);
+  r.onupgradeneeded=()=>{const d=r.result;const has=n=>d.objectStoreNames.contains(n);
+    if(!has("cards"))d.createObjectStore("cards",{keyPath:"id"});if(!has("photos"))d.createObjectStore("photos");
+    if(!has("memos"))d.createObjectStore("memos",{keyPath:"id"});if(!has("audio"))d.createObjectStore("audio")};
   r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
 function tx(store,mode,fn){return new Promise((res,rej)=>{const t=idb.transaction(store,mode);const out=fn(t);t.oncomplete=()=>res(out?.result??out);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error)})}
 const dbAll=()=>tx("cards","readonly",t=>t.objectStore("cards").getAll());
@@ -233,7 +261,18 @@ async function render(){
   const srcs=await Promise.all(list.map(c=>c.hasPhoto?photoURL(c.id):""));
   $("#grid").innerHTML=list.map((c,i)=>cardHTML(c,srcs[i])).join("")+(cards.length&&!list.length?`<p class="hint">沒有符合「${esc(query||filter)}」的名片。</p>`:"");
 }
-async function reload(){cards=await dbAll();await render()}
+const memoAll=()=>tx("memos","readonly",t=>t.objectStore("memos").getAll());
+const memoPut=m=>tx("memos","readwrite",t=>{t.objectStore("memos").put(m)});
+const memoDel=id=>tx(["memos","audio"],"readwrite",t=>{t.objectStore("memos").delete(id);t.objectStore("audio").delete(id)});
+const audioPut=(id,b)=>tx("audio","readwrite",t=>{t.objectStore("audio").put(b,id)});
+const audioGet=id=>tx("audio","readonly",t=>t.objectStore("audio").get(id));
+let memos=[];
+function renderInbox(){
+  const b=$("#inbox");b.hidden=!memos.length;if(!memos.length)return;
+  const last=memos.reduce((a,m)=>Math.max(a,m.createdAt||0),0);
+  b.innerHTML=`<span class="num">${memos.length}</span><span class="txt"><b>待整理的速記</b><span>最近一則：${esc(fmtTime(last))}　點這裡整理成名片</span></span><span aria-hidden="true">›</span>`;
+}
+async function reload(){[cards,memos]=await Promise.all([dbAll(),memoAll()]);memos.sort((a,b)=>b.createdAt-a.createdAt);renderInbox();await render()}
 
 /* ---------- sheet ---------- */
 function openSheet(html){const s=$("#sheet");s.innerHTML=html;s.hidden=false;$("#scrim").hidden=false;s.scrollTop=0;s.querySelectorAll("[data-close]").forEach(b=>b.onclick=closeSheet)}
@@ -287,13 +326,15 @@ async function shrink(blob,max,q){
 }
 
 /* ---------- form ---------- */
-async function showForm(c){
+async function showForm(c,fromMemo,prefill){
   const isNew=!c;
-  c=c?structuredClone(c):{id:"c"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),socials:[],skills:[],createdAt:Date.now()};
+  c=c?structuredClone(c):{id:"c"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),socials:[],skills:[],createdAt:Date.now(),...(prefill||{})};
+  const memoAudio=fromMemo?.hasAudio?URL.createObjectURL(await audioGet(fromMemo.id)):"";
   let pending=null; const cur=c.hasPhoto?await photoURL(c.id):"";
   const indOpts=[...INDUSTRIES,...(c.industry&&!INDUSTRIES.includes(c.industry)?[c.industry]:[])];
-  openSheet(`<div class="sheet-head"><h2>${isNew?"新增名片":"編輯名片"}</h2><button class="x" type="button" data-close aria-label="關閉">×</button></div>
+  openSheet(`<div class="sheet-head"><h2>${fromMemo?"整理成名片":isNew?"新增名片":"編輯名片"}</h2><button class="x" type="button" data-close aria-label="關閉">×</button></div>
   <form id="cardForm" novalidate>
+    ${fromMemo?`<div class="memo-ref"><span class="lbl">速記內容（${esc(fmtTime(fromMemo.createdAt))}${fromMemo.place?"・"+esc(fromMemo.place):""}）</span>${fromMemo.text?`<div class="memo-text">${esc(fromMemo.text)}</div>`:""}${memoAudio?`<audio controls preload="metadata" src="${memoAudio}"></audio>`:""}<span class="hint">已自動帶入抓得到的資料，請對照後補齊。儲存後這則速記會移出待整理。</span></div>`:""}
     <div>
       <div class="preview" id="pv">${cur?`<img src="${esc(cur)}" alt="">`:"拍下名片正面"}</div>
       <div class="pick-btns">
@@ -349,9 +390,106 @@ async function showForm(c){
     const btn=$("#saveBtn");btn.disabled=true;btn.textContent="儲存中…";
     try{
       if(pending){await photoPut(out.id,pending);out.hasPhoto=true;dropURL(out.id)}
-      await dbPut(out);closeSheet();await reload();toast(isNew?"已新增":"已更新");
+      await dbPut(out);if(fromMemo)await memoDel(fromMemo.id);closeSheet();await reload();toast(fromMemo?"已整理成名片":isNew?"已新增":"已更新");
     }catch(err){btn.disabled=false;btn.textContent="儲存";toast("儲存失敗，手機空間可能不足")}
   };
+}
+
+
+/* ---------- quick voice memo ---------- */
+function fmtTime(t){if(!t)return"";const d=new Date(t),n=new Date();const hm=d.toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit",hour12:false});
+  return d.toDateString()===n.toDateString()?"今天 "+hm:`${d.getMonth()+1}/${d.getDate()} ${hm}`}
+function lastPlace(){try{const v=JSON.parse(localStorage.getItem("cardbox.place")||"null");if(v&&Date.now()-v.t<12*3600e3)return v.p}catch(e){}return""}
+function savePlace(p){try{localStorage.setItem("cardbox.place",JSON.stringify({p,t:Date.now()}))}catch(e){}}
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+const MIC_SVG='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2z"/></svg>';
+const STOP_SVG='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+
+function showMemo(){
+  let rec=null, mr=null, chunks=[], audioBlob=null, mode=SR?"speech":"audio", running=false, t0=0, tick=null, base="";
+  openSheet(`<div class="sheet-head"><h2>口述速記</h2><button class="x" type="button" data-close aria-label="關閉">×</button></div>
+  <div class="mic-wrap">
+    <button class="mic" id="micBtn" type="button" aria-label="開始口述">${MIC_SVG}</button>
+    <div class="mic-state" id="micState">點麥克風開始說，例如：「王小明，台積電工程師，賴 ID wang123，喜歡攝影」</div>
+  </div>
+  <form id="memoForm" novalidate style="margin-top:8px">
+    <label class="f">內容（可以直接打字，或用鍵盤上的麥克風輸入）<textarea id="m_text" rows="5" placeholder="說的內容會出現在這裡"></textarea></label>
+    <div id="m_audio"></div>
+    <label class="f">場合<input id="m_place" value="${esc(lastPlace())}" placeholder="例如：中興大學創業週" autocomplete="off"></label>
+    <div class="actions"><button class="btn primary" type="submit" id="m_save">存到待整理</button><button class="btn" type="button" data-close>取消</button></div>
+  </form>`);
+  const micBtn=$("#micBtn"), st=$("#micState"), ta=$("#m_text");
+  const setState=(on,msg)=>{running=on;micBtn.classList.toggle("on",on);micBtn.innerHTML=on?STOP_SVG:MIC_SVG;micBtn.setAttribute("aria-label",on?"停止":"開始口述");if(msg!=null)st.innerHTML=msg};
+  const startTimer=()=>{t0=Date.now();clearInterval(tick);tick=setInterval(()=>{const s=Math.floor((Date.now()-t0)/1000);const el=$("#tm");if(el)el.textContent=`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`},500)};
+  async function startAudio(note){
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      chunks=[];mr=new MediaRecorder(stream);
+      mr.ondataavailable=e=>e.data.size&&chunks.push(e.data);
+      mr.onstop=()=>{stream.getTracks().forEach(t=>t.stop());audioBlob=new Blob(chunks,{type:mr.mimeType||"audio/mp4"});
+        $("#m_audio").innerHTML=`<audio controls src="${URL.createObjectURL(audioBlob)}"></audio>`;setState(false,"錄好了，會連同錄音一起存。有空再聽著整理。")};
+      mr.start();startTimer();setState(true,`${note||""}錄音中 <span class="timer" id="tm">0:00</span>　說完點一下停止`);
+    }catch(e){setState(false,"無法使用麥克風。請到手機設定允許瀏覽器使用麥克風，或直接用鍵盤輸入。")}
+  }
+  function startSpeech(){
+    rec=new SR();rec.lang="zh-TW";rec.continuous=true;rec.interimResults=true;
+    base=ta.value?ta.value.replace(/\s*$/,"")+"\n":"";let finalTxt="";
+    rec.onresult=e=>{let interim="";for(let i=e.resultIndex;i<e.results.length;i++){const r=e.results[i];if(r.isFinal)finalTxt+=r[0].transcript+"，";else interim+=r[0].transcript}
+      ta.value=base+finalTxt+interim};
+    rec.onerror=e=>{if(["not-allowed","service-not-allowed","audio-capture","network","language-not-supported"].includes(e.error)){rec.onend=null;mode="audio";startAudio("這支手機不支援語音轉文字，改成")}};
+    rec.onend=()=>{if(running&&mode==="speech"){try{rec.start();return}catch(e){}}if(mode==="speech")setState(false,"已轉成文字，請看一下有沒有聽錯再存。")};
+    try{rec.start();setState(true,"聆聽中… 說完點一下停止")}catch(e){mode="audio";startAudio()}
+  }
+  micBtn.onclick=()=>{
+    if(running){running=false;clearInterval(tick);if(mode==="speech"&&rec){rec.stop()}else if(mr&&mr.state!=="inactive"){mr.stop()}return}
+    if(mode==="speech")startSpeech();else startAudio();
+  };
+  const stopAll=()=>{running=false;clearInterval(tick);try{rec&&rec.abort()}catch(e){}try{mr&&mr.state!=="inactive"&&mr.stop()}catch(e){}};
+  $("#sheet").querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",stopAll));
+  $("#memoForm").onsubmit=async e=>{
+    e.preventDefault();
+    if(running){micBtn.click();await new Promise(r=>setTimeout(r,500))}
+    const text=ta.value.trim(), place=$("#m_place").value.trim();
+    if(!text&&!audioBlob){toast("還沒有內容，先說幾句或打幾個字");return}
+    const m={id:"m"+Date.now().toString(36)+Math.random().toString(36).slice(2,5),text,place,createdAt:Date.now(),hasAudio:!!audioBlob};
+    try{if(audioBlob)await audioPut(m.id,audioBlob);await memoPut(m);if(place)savePlace(place);closeSheet();await reload();toast("已存到待整理")}
+    catch(err){toast("儲存失敗，手機空間可能不足")}
+  };
+}
+
+/* pull likely fields out of spoken text */
+function cnDigits(s){const map={"零":"0","〇":"0","一":"1","么":"1","二":"2","兩":"2","三":"3","四":"4","五":"5","六":"6","七":"7","八":"8","九":"9"};
+  return s.replace(/[零〇一么二兩三四五六七八九]{4,}/g,m=>[...m].map(c=>map[c]).join(""))}
+function parseMemo(raw){
+  const t=cnDigits(raw||""); const out={socials:[],skills:[]};
+  const phone=t.match(/(?:\+?886[-\s]?|0)9\d{2}[-\s]?\d{3}[-\s]?\d{3}/);if(phone)out.phone=phone[0].replace(/\s/g,"");
+  const mail=t.replace(/\s*(小老鼠|at)\s*/gi,"@").replace(/\s*(點|dot)\s*(?=com|tw|net|org|edu)/gi,".").match(/[\w.+-]+@[\w-]+\.[\w.]+/);if(mail)out.email=mail[0];
+  const line=t.match(/(?:賴|LINE|line|Line)\s*(?:ID|id|帳號)?\s*(?:是|：|:)?\s*@?([A-Za-z0-9._-]{3,})/);if(line)out.lineId=line[1];
+  const ig=t.match(/(?:IG|ig|Instagram|instagram)\s*(?:帳號)?\s*(?:是|：|:)?\s*@?([A-Za-z0-9._]{2,})/);if(ig)out.socials.push({platform:"Instagram",handle:ig[1]});
+  const fb=t.match(/(?:FB|fb|臉書|Facebook)\s*(?:是|：|:)?\s*([A-Za-z0-9._]{3,})/);if(fb)out.socials.push({platform:"Facebook",handle:fb[1]});
+  const th=t.match(/(?:Threads|threads|脆)\s*(?:是|：|:)?\s*@?([A-Za-z0-9._]{2,})/);if(th)out.socials.push({platform:"Threads",handle:th[1]});
+  const name=t.match(/(?:他叫|她叫|叫做|名字是|名字叫|姓名)\s*([一-龥]{2,4})/)||t.match(/^\s*([一-龥]{2,3})[，,、\s]/);if(name)out.name=name[1];
+  const sk=t.match(/(?:專長|擅長|會做|技能)(?:是)?\s*([^。\n]{2,40})/);if(sk)out.skills=sk[1].split(/[,，、和跟及\s]+/).map(x=>x.trim()).filter(x=>x&&x.length<=12).slice(0,5);
+  const kw=[["科技／軟體",/工程師|軟體|程式|AI|網頁|App|資訊/],["製造／電子",/半導體|電子|製造|工廠|台積電|鴻海/],["金融／保險",/銀行|保險|證券|投資|理財|金融/],["行銷／廣告",/行銷|廣告|公關|社群經營/],["設計／創意",/設計|插畫|攝影|影片|創意/],["餐飲／食品",/餐廳|咖啡|餐飲|食品|烘焙/],["零售／電商",/電商|零售|門市|超市/],["教育",/老師|教授|補習|教育|講師/],["醫療／健康",/醫生|護理|醫院|診所|藥師|健身|物理治療/],["不動產／建築",/房仲|建築|不動產|室內設計|建設/],["法律／會計",/律師|會計|法務|記帳/],["政府／公部門",/公務|政府|市府|公所/],["學生／學術",/學生|研究生|大學|碩士|博士/]];
+  for(const [k,re] of kw)if(re.test(t)){out.industry=k;break}
+  return out;
+}
+function showInbox(){
+  if(!memos.length){closeSheet();return}
+  openSheet(`<div class="sheet-head"><h2>待整理的速記</h2><button class="x" type="button" data-close aria-label="關閉">×</button></div>
+  <div style="display:grid;gap:10px">${memos.map(m=>`<div class="memo-item" data-mid="${esc(m.id)}">
+    <div class="memo-meta"><span>${esc(fmtTime(m.createdAt))}</span>${m.place?`<span class="place">${esc(m.place)}</span>`:""}${m.hasAudio?"<span>有錄音</span>":""}</div>
+    ${m.text?`<div class="memo-text">${esc(m.text)}</div>`:""}
+    <div class="audio-slot"></div>
+    <div class="actions" style="margin-top:0"><button class="btn primary" type="button" data-conv>整理成名片</button><button class="btn danger" type="button" data-mdel>刪除</button></div>
+  </div>`).join("")}</div>`);
+  $("#sheet").querySelectorAll(".memo-item").forEach(async el=>{
+    const m=memos.find(x=>x.id===el.dataset.mid);
+    if(m.hasAudio){const b=await audioGet(m.id);if(b)el.querySelector(".audio-slot").innerHTML=`<audio controls preload="metadata" src="${URL.createObjectURL(b)}"></audio>`}
+    el.querySelector("[data-conv]").onclick=()=>{const p=parseMemo(m.text);p.metAt=m.place||"";p.notes=m.text||"";showForm(null,m,p)};
+    const del=el.querySelector("[data-mdel]");
+    del.onclick=async()=>{if(del.dataset.armed){await memoDel(m.id);await reload();showInbox();toast("已刪除速記")}else{del.dataset.armed="1";del.textContent="再按一次確認刪除"}};
+  });
 }
 
 /* ---------- backup ---------- */
@@ -360,6 +498,7 @@ async function dataURLToBlob(u){return (await fetch(u)).blob()}
 async function exportBackup(){
   const out={app:"cardbox",version:1,exportedAt:new Date().toISOString(),cards:[]};
   for(const c of cards){const p=c.hasPhoto?await photoGet(c.id):null;out.cards.push({...c,photo:p?await blobToDataURL(p):null})}
+  out.memos=[];for(const m of memos){const a=m.hasAudio?await audioGet(m.id):null;out.memos.push({...m,audio:a?await blobToDataURL(a):null})}
   const blob=new Blob([JSON.stringify(out)],{type:"application/json"});
   const name=`CardBox備份-${new Date().toISOString().slice(0,10)}.json`;
   const file=new File([blob],name,{type:"application/json"});
@@ -374,6 +513,9 @@ async function importBackup(file){
   for(const raw of data.cards){const{photo,...c}=raw;if(!c.id)continue;
     if(photo){try{await photoPut(c.id,await dataURLToBlob(photo));c.hasPhoto=true;dropURL(c.id)}catch(e){c.hasPhoto=false}}
     await dbPut(c);n++}
+  for(const raw of (Array.isArray(data.memos)?data.memos:[])){const{audio,...m}=raw;if(!m.id)continue;
+    if(audio){try{await audioPut(m.id,await dataURLToBlob(audio));m.hasAudio=true}catch(e){m.hasAudio=false}}
+    await memoPut(m)}
   closeSheet();await reload();toast(`已匯入 ${n} 張名片`);
 }
 async function exportCSV(){
@@ -394,7 +536,7 @@ function showMenu(){
     <span class="btn filebtn">從備份檔還原<input id="mImport" type="file" accept="application/json,.json" aria-label="從備份檔還原"></span>
     <button class="btn" type="button" id="mCSV">匯出成 Excel 可開的 CSV</button>
   </div>
-  <p class="hint">目前共 ${cards.length} 張名片。</p>`);
+  <p class="hint">目前共 ${cards.length} 張名片、${memos.length} 則待整理速記。備份會一起存。</p>`);
   $("#mExport").onclick=exportBackup;$("#mCSV").onclick=exportCSV;
   $("#mImport").onchange=e=>{const f=e.target.files?.[0];if(f)importBackup(f)};
 }
@@ -417,6 +559,8 @@ document.addEventListener("click",async e=>{
 });
 $("#q").addEventListener("input",e=>{query=e.target.value.trim();render()});
 $("#addBtn").onclick=()=>showForm(null);
+$("#memoBtn").onclick=showMemo;
+$("#inbox").onclick=showInbox;
 $("#menuBtn").onclick=showMenu;
 
 (async()=>{

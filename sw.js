@@ -1,5 +1,5 @@
 // 讓名片盒在沒有網路時也能打開。改版時把版本號 +1。
-const CACHE = "cardbox-v3";
+const CACHE = "cardbox-v4";
 const CORE = [
   "./", "./index.html", "./manifest.webmanifest",
   "./icons/logo.png", "./icons/favicon.png", "./icons/apple-touch-icon.png",
