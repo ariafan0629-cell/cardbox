@@ -82,6 +82,7 @@ main .inner{padding-block:16px 110px}
 .who{min-width:0}
 .name{font-size:1.1rem;font-weight:700;line-height:1.3}
 .role{color:var(--muted);font-size:.83rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.name-en{font-family:var(--f-body);font-weight:500;font-size:.82rem;color:var(--muted);margin-left:8px;letter-spacing:.02em}
 .role.en{font-size:.76rem;letter-spacing:.02em}
 .line-id{font-family:var(--f-mono);font-size:.75rem;color:var(--muted);margin-top:2px}
 .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
@@ -242,14 +243,14 @@ function dropURL(id){const u=urls.get(id);if(u)URL.revokeObjectURL(u);urls.delet
 function matches(c){
   if(filter!=="全部"&&(c.industry||"其他")!==filter)return false;
   if(!query)return true;
-  const hay=[c.name,c.company,c.companyEn,c.title,c.industry,c.lineId,c.phone,c.email,c.metAt,c.notes,...(c.skills||[]),...(c.socials||[]).map(s=>s.handle)].join(" ").toLowerCase();
+  const hay=[c.name,c.nameEn,c.company,c.companyEn,c.title,c.industry,c.lineId,c.phone,c.email,c.metAt,c.notes,...(c.skills||[]),...(c.socials||[]).map(s=>s.handle)].join(" ").toLowerCase();
   return query.toLowerCase().split(/\s+/).every(w=>hay.includes(w));
 }
 function cardHTML(c,src,ex){
   return `<button class="bcard" type="button" data-id="${esc(c.id)}"${ex?' data-ex="1"':""}>
     <div class="thumb">${src?`<img src="${esc(src)}" alt="" loading="lazy">`:"無照片"}</div>
     <div class="who">
-      <div class="name">${esc(c.name||"（未命名）")}</div>
+      <div class="name">${esc(c.name||c.nameEn||"（未命名）")}${c.name&&c.nameEn?`<span class="name-en">${esc(c.nameEn)}</span>`:""}</div>
       <div class="role">${esc([c.title,c.company||c.companyEn].filter(Boolean).join(" · "))}</div>${c.company&&c.companyEn?`<div class="role en">${esc(c.companyEn)}</div>`:""}
       ${c.lineId?`<div class="line-id">LINE ${esc(c.lineId)}</div>`:""}
       <div class="chips">${c.industry?`<span class="chip ind">${esc(c.industry)}</span>`:""}${(c.skills||[]).slice(0,3).map(s=>`<span class="chip">${esc(s)}</span>`).join("")}</div>
@@ -404,10 +405,10 @@ async function showDetail(c,ex){
   const row=(k,v,copy)=>v?`<dt>${k}</dt><dd>${copy?`<span class="mono">${esc(v)}</span><button class="copy" type="button" data-copy="${esc(v)}">複製</button>`:esc(v)}</dd>`:"";
   const lineLink=c.lineId?`<a class="btn metal" href="https://line.me/R/ti/p/~${encodeURIComponent(c.lineId)}" target="_blank" rel="noopener">用 LINE 加好友</a>`:"";
   const tel=c.phone?`<a class="btn" href="tel:${esc(c.phone.replace(/[^\d+]/g,""))}">打電話</a>`:"";
-  openSheet(`<div class="sheet-head"><h2>${esc(c.name||"（未命名）")}</h2><button class="x" type="button" data-close aria-label="關閉">×</button></div>
+  openSheet(`<div class="sheet-head"><h2>${esc(c.name||c.nameEn||"（未命名）")}${c.name&&c.nameEn?`<span class="name-en">${esc(c.nameEn)}</span>`:""}</h2><button class="x" type="button" data-close aria-label="關閉">×</button></div>
     ${src?`<img class="photo-big" src="${esc(src)}" alt="名片照片">`:""}
     <dl class="kv">
-      ${row("公司",c.company)}${row("英文名",c.companyEn)}${row("職稱",c.title)}${row("產業",c.industry)}
+      ${row("公司",c.company)}${row("公司英文名",c.companyEn)}${row("職稱",c.title)}${row("產業",c.industry)}
       ${c.skills?.length?`<dt>專長</dt><dd><div class="chips" style="margin:0">${c.skills.map(s=>`<span class="chip">${esc(s)}</span>`).join("")}</div></dd>`:""}
       ${row("賴 ID",c.lineId,true)}${row("電話",c.phone,true)}${row("Email",c.email,true)}
       ${c.socials?.length?`<dt>社群</dt><dd class="socials">${c.socials.map(socialLink).join("")}</dd>`:""}
@@ -420,7 +421,7 @@ async function showDetail(c,ex){
   s.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyText(b.dataset.copy,b.previousElementSibling));
   if(ex)return;
   $("#editBtn").onclick=()=>showForm(c);
-  $("#askDel").onclick=()=>{$("#confirmBox").innerHTML=`<div class="confirm"><span>確定刪除 ${esc(c.name||"這張名片")}？無法復原。</span><button class="btn danger" type="button" id="doDel">刪除</button><button class="btn" type="button" id="noDel">取消</button></div>`;
+  $("#askDel").onclick=()=>{$("#confirmBox").innerHTML=`<div class="confirm"><span>確定刪除 ${esc(c.name||c.nameEn||"這張名片")}？無法復原。</span><button class="btn danger" type="button" id="doDel">刪除</button><button class="btn" type="button" id="noDel">取消</button></div>`;
     $("#noDel").onclick=()=>$("#confirmBox").innerHTML="";
     $("#doDel").onclick=async()=>{await dbDel(c.id);dropURL(c.id);closeSheet();await reload();toast("已刪除")}};
 }
@@ -453,9 +454,12 @@ async function showForm(c,fromMemo,prefill){
     </div>
     <div class="row">
       <label class="f">姓名<input id="f_name" value="${esc(c.name)}" autocomplete="off"></label>
-      <label class="f">公司<input id="f_company" value="${esc(c.company)}" autocomplete="off"></label>
+      <label class="f">英文名<input id="f_nameEn" value="${esc(c.nameEn)}" placeholder="例如：Kevin Wang" autocapitalize="words" autocomplete="off"></label>
     </div>
-    <label class="f">公司英文名<input id="f_companyEn" value="${esc(c.companyEn)}" placeholder="例如：TSMC" autocapitalize="words" autocomplete="off"></label>
+    <div class="row">
+      <label class="f">公司<input id="f_company" value="${esc(c.company)}" autocomplete="off"></label>
+      <label class="f">公司英文名<input id="f_companyEn" value="${esc(c.companyEn)}" placeholder="例如：TSMC" autocapitalize="words" autocomplete="off"></label>
+    </div>
     <div class="row">
       <label class="f">職稱<input id="f_title" value="${esc(c.title)}" autocomplete="off"></label>
       <label class="f">產業類別<select id="f_industry"><option value="">選擇產業</option>${indOpts.map(i=>`<option${i===c.industry?" selected":""}>${esc(i)}</option>`).join("")}</select></label>
@@ -491,12 +495,12 @@ async function showForm(c,fromMemo,prefill){
   $("#cardForm").onsubmit=async e=>{
     e.preventDefault();
     const v=k=>$("#f_"+k).value.trim();
-    const out={...c,name:v("name"),company:v("company"),companyEn:v("companyEn"),title:v("title"),industry:v("industry"),
+    const out={...c,name:v("name"),nameEn:v("nameEn"),company:v("company"),companyEn:v("companyEn"),title:v("title"),industry:v("industry"),
       skills:v("skills").split(/[,，、\s]+/).filter(Boolean),
       lineId:v("lineId"),phone:v("phone"),email:v("email"),metAt:v("metAt"),notes:v("notes"),
       socials:[...socList.children].map(r=>({platform:r.querySelector("select").value,handle:r.querySelector("input").value.trim()})).filter(x=>x.handle),
       updatedAt:Date.now()};
-    if(!out.name&&!out.company&&!out.companyEn&&!pending&&!out.hasPhoto){toast("至少填姓名或公司，或拍一張名片");return}
+    if(!out.name&&!out.nameEn&&!out.company&&!out.companyEn&&!pending&&!out.hasPhoto){toast("至少填姓名或公司，或拍一張名片");return}
     const btn=$("#saveBtn");btn.disabled=true;btn.textContent="儲存中…";
     try{
       if(pending){await photoPut(out.id,pending);out.hasPhoto=true;dropURL(out.id)}
@@ -579,6 +583,7 @@ function parseMemo(raw){
   const fb=t.match(/(?:FB|fb|臉書|Facebook)\s*(?:是|：|:)?\s*([A-Za-z0-9._]{3,})/);if(fb)out.socials.push({platform:"Facebook",handle:fb[1]});
   const th=t.match(/(?:Threads|threads|脆)\s*(?:是|：|:)?\s*@?([A-Za-z0-9._]{2,})/);if(th)out.socials.push({platform:"Threads",handle:th[1]});
   const name=t.match(/(?:他叫|她叫|叫做|名字是|名字叫|姓名)\s*([一-龥]{2,4})/)||t.match(/^\s*([一-龥]{2,3})[，,、\s]/);if(name)out.name=name[1];
+  const en=t.match(/(?:英文名(?:字)?|English name)\s*(?:是|叫|：|:)?\s*([A-Za-z][A-Za-z .'-]{1,30}?)(?=[，,。\n]|$)/);if(en)out.nameEn=en[1].trim();
   const sk=t.match(/(?:專長|擅長|會做|技能)(?:是)?\s*([^。\n]{2,40})/);if(sk)out.skills=sk[1].split(/[,，、和跟及\s]+/).map(x=>x.trim()).filter(x=>x&&x.length<=12).slice(0,5);
   const kw=[["科技／軟體",/工程師|軟體|程式|AI|網頁|App|資訊/],["製造／電子",/半導體|電子|製造|工廠|台積電|鴻海/],["金融／保險",/銀行|保險|證券|投資|理財|金融/],["行銷／廣告",/行銷|廣告|公關|社群經營/],["設計／創意",/設計|插畫|攝影|影片|創意/],["餐飲／食品",/餐廳|咖啡|餐飲|食品|烘焙/],["零售／電商",/電商|零售|門市|超市/],["教育",/老師|教授|補習|教育|講師/],["醫療／健康",/醫生|護理|醫院|診所|藥師|健身|物理治療/],["不動產／建築",/房仲|建築|不動產|室內設計|建設/],["法律／會計",/律師|會計|法務|記帳/],["政府／公部門",/公務|政府|市府|公所/],["學生／學術",/學生|研究生|大學|碩士|博士/]];
   for(const [k,re] of kw)if(re.test(t)){out.industry=k;break}
@@ -629,7 +634,7 @@ async function importBackup(file){
   closeSheet();await reload();toast(`已匯入 ${n} 張名片`);
 }
 async function exportCSV(){
-  const cols=[["姓名","name"],["公司","company"],["公司英文名","companyEn"],["職稱","title"],["產業","industry"],["專長",c=>(c.skills||[]).join("、")],["賴ID","lineId"],["電話","phone"],["Email","email"],["社群",c=>(c.socials||[]).map(s=>s.platform+":"+s.handle).join(" | ")],["認識於","metAt"],["備註","notes"]];
+  const cols=[["姓名","name"],["英文名","nameEn"],["公司","company"],["公司英文名","companyEn"],["職稱","title"],["產業","industry"],["專長",c=>(c.skills||[]).join("、")],["賴ID","lineId"],["電話","phone"],["Email","email"],["社群",c=>(c.socials||[]).map(s=>s.platform+":"+s.handle).join(" | ")],["認識於","metAt"],["備註","notes"]];
   const q=v=>`"${String(v??"").replace(/"/g,'""')}"`;
   const lines=[cols.map(c=>q(c[0])).join(",")].concat(cards.map(c=>cols.map(([,k])=>q(typeof k==="function"?k(c):c[k])).join(",")));
   const blob=new Blob(["﻿"+lines.join("\r\n")],{type:"text/csv"});
