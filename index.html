@@ -697,6 +697,25 @@ addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredPrompt=e;
   showTip(`把名片盒 CardBox 裝到手機桌面，開起來就像一般 App。 <button class="btn primary" type="button" id="doInstall" style="margin-top:8px">安裝到桌面</button>`);
   const b=$("#doInstall");if(b)b.onclick=async()=>{deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;hideTip()}});
 
+/* ---------- Enter moves to the next field ---------- */
+const FIELD_SEL='input:not([type=file]):not([type=hidden]):not([type=checkbox]):not([type=radio]),select,textarea';
+function formFields(form){return [...form.querySelectorAll(FIELD_SEL)].filter(el=>!el.disabled&&el.offsetParent!==null)}
+document.addEventListener("focusin",e=>{
+  const el=e.target,form=el.closest&&el.closest("#cardForm,#memoForm");
+  if(!form||!el.matches(FIELD_SEL)||el.tagName==="TEXTAREA")return;
+  const f=formFields(form),i=f.indexOf(el);
+  el.setAttribute("enterkeyhint",i<f.length-1?"next":"done");
+});
+document.addEventListener("keydown",e=>{
+  if(e.key!=="Enter"||e.isComposing||e.keyCode===229||e.shiftKey||e.altKey||e.ctrlKey||e.metaKey)return;
+  const el=e.target,form=el.closest&&el.closest("#cardForm,#memoForm");
+  if(!form||!el.matches(FIELD_SEL)||el.tagName==="TEXTAREA")return;
+  e.preventDefault();
+  const f=formFields(form),next=f[f.indexOf(el)+1];
+  if(next){next.focus();if(next.select&&next.tagName==="INPUT")next.select();next.scrollIntoView({block:"center",behavior:"smooth"})}
+  else el.blur();
+});
+
 /* ---------- events ---------- */
 document.addEventListener("click",async e=>{
   const t=e.target.closest(".tab");if(t){filter=t.dataset.f;render();return}
