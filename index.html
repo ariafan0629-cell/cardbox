@@ -77,32 +77,27 @@ main .inner{padding-block:16px 110px}
 .bcard{display:grid;grid-template-columns:96px 1fr;gap:12px;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:12px;box-shadow:var(--shadow);min-width:0;position:relative;overflow:hidden}
 .bcard::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--metal)}
 .bcard:hover{border-color:var(--steel-3)}
-.thumb{width:96px;aspect-ratio:1.75/1;border-radius:4px;background:var(--steel-1);display:grid;place-items:center;color:var(--muted);font-size:.7rem;overflow:hidden}
-.thumb img{width:100%;height:100%;object-fit:cover}
+.thumb{width:96px;aspect-ratio:3/4;max-width:100%;border-radius:4px;background:var(--steel-1);display:grid;place-items:center;color:var(--muted);font-size:.7rem;overflow:hidden}
+.thumb img{width:100%;height:100%;object-fit:contain}
+.thumb img.av{object-fit:cover}
 .who{min-width:0}
 .name{font-size:1.1rem;font-weight:700;line-height:1.3}
 .role{color:var(--muted);font-size:.83rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .name-en{font-family:var(--f-body);font-weight:500;font-size:.82rem;color:var(--muted);margin-left:8px;letter-spacing:.02em}
 .thumb{position:relative}
-.thumb .av-only{width:56px;height:56px;border-radius:50%;object-fit:cover}
-.thumb .av-badge{position:absolute;right:4px;bottom:4px;width:30px;height:30px;border-radius:50%;object-fit:cover;border:2px solid var(--surface)}
 .pcount{position:absolute;left:4px;top:4px;background:var(--black);color:var(--on-black);font-size:.65rem;padding:0 5px;border-radius:4px;line-height:1.5}
 .who-head{display:flex;align-items:center;gap:12px;min-width:0}
 .who-head span{min-width:0}
-.av-head{width:52px;height:52px;border-radius:50%;object-fit:cover;flex:none;border:1px solid var(--line)}
+.av-head{width:60px;height:80px;border-radius:6px;object-fit:cover;flex:none;border:1px solid var(--line)}
 .gallery{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:thin}
 .gallery .photo-big{flex:0 0 100%;scroll-snap-align:center}
 .av-pick{display:flex;gap:14px;align-items:center}
-.av-circle{width:76px;height:76px;flex:none;border-radius:50%;overflow:hidden;background:var(--steel-1);color:var(--steel-3);display:grid;place-items:center;border:1px solid var(--line)}
+.av-circle{width:90px;height:120px;flex:none;border-radius:8px;overflow:hidden;background:var(--steel-1);color:var(--steel-3);display:grid;place-items:center;border:1px solid var(--line)}
 .av-circle svg{width:44px;height:44px}
 .av-circle img{width:100%;height:100%;object-fit:cover}
 .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
 .pitem{position:relative;aspect-ratio:1.75/1;max-width:100%;border-radius:6px;overflow:hidden;background:var(--steel-1);border:1px solid var(--line)}
-.pitem.cover{border-color:var(--ink)}
 .pitem img{width:100%;height:100%;object-fit:cover}
-.ptag,.pmk{position:absolute;left:4px;bottom:4px;font-size:.68rem;padding:1px 6px;border-radius:4px;border:0}
-.ptag{background:var(--black);color:var(--on-black)}
-.pmk{background:rgba(255,255,255,.88);color:#0d0e10}
 .pdel{position:absolute;right:4px;top:4px;width:24px;height:24px;border-radius:50%;border:0;background:rgba(13,14,16,.75);color:#fff;line-height:1}
 .pempty{grid-column:1/-1;border:1.5px dashed var(--steel-2);border-radius:8px;padding:18px;text-align:center;color:var(--muted);font-size:.85rem}
 .ind-chips{display:flex;flex-wrap:wrap;gap:6px}
@@ -298,7 +293,7 @@ function matches(c){
 }
 function cardHTML(c,src,ex){
   return `<button class="bcard" type="button" data-id="${esc(c.id)}"${ex?' data-ex="1"':""}>
-    <div class="thumb">${src?`<img src="${esc(src)}" alt="" loading="lazy">`:c.avatar?`<img class="av-only" src="${esc(c.avatar)}" alt="">`:"無照片"}${src&&c.avatar?`<img class="av-badge" src="${esc(c.avatar)}" alt="">`:""}${photoKeys(c).length>1?`<span class="pcount">${photoKeys(c).length} 張</span>`:""}</div>
+    <div class="thumb">${c.avatar?`<img class="av" src="${esc(c.avatar)}" alt="" loading="lazy">`:src?`<img src="${esc(src)}" alt="" loading="lazy">`:"無照片"}${!c.avatar&&photoKeys(c).length>1?`<span class="pcount">${photoKeys(c).length} 張</span>`:""}</div>
     <div class="who">
       <div class="name">${esc(c.name||c.nameEn||"（未命名）")}${c.name&&c.nameEn?`<span class="name-en">${esc(c.nameEn)}</span>`:""}</div>
       ${(()=>{const os=orgsOf(c),o=os[0];if(!o)return"";return `<div class="role">${esc([o.title,orgLabel(o)].filter(Boolean).join(" · "))}</div>${o.name&&o.nameEn?`<div class="role en">${esc(o.nameEn)}</div>`:""}${os.length>1?`<div class="role more">另有 ${os.length-1} 個公司／組織：${esc(os.slice(1).map(orgLabel).filter(Boolean).join("、"))}</div>`:""}`})()}
@@ -485,10 +480,12 @@ async function shrink(blob,max,q){
   return new Promise(r=>cv.toBlob(b=>r(b),"image/jpeg",q));
 }
 
-async function squareAvatar(blob,size=256){
-  const img=await loadImg(blob);const m=Math.min(img.naturalWidth,img.naturalHeight);
-  const cv=document.createElement("canvas");cv.width=cv.height=size;
-  cv.getContext("2d").drawImage(img,(img.naturalWidth-m)/2,(img.naturalHeight-m)/2,m,m,0,0,size,size);
+async function squareAvatar(blob){
+  /* every profile photo is cropped to the same 3:4 rectangle (300×400) */
+  const W=300,H=400,img=await loadImg(blob),iw=img.naturalWidth,ih=img.naturalHeight;
+  let sw=iw,sh=iw*H/W;if(sh>ih){sh=ih;sw=ih*W/H}
+  const cv=document.createElement("canvas");cv.width=W;cv.height=H;
+  cv.getContext("2d").drawImage(img,(iw-sw)/2,(ih-sh)/2.6,sw,sh,0,0,W,H);
   return cv.toDataURL("image/jpeg",.8);
 }
 
@@ -516,7 +513,7 @@ async function showForm(c,fromMemo,prefill){
       </div>
     </div>
     <div>
-      <div class="legend">名片照片（可以放很多張，第一張是封面）</div>
+      <div class="legend">名片照片（可以放很多張）</div>
       <div class="pgrid" id="pgrid"></div>
       <div class="pick-btns">
         <span class="btn primary filebtn">拍名片<input id="fCam" type="file" accept="image/*" capture="environment" aria-label="拍名片"></span>
@@ -575,9 +572,8 @@ async function showForm(c,fromMemo,prefill){
   /* card photos */
   const pgrid=$("#pgrid");
   const drawPhotos=()=>{
-    pgrid.innerHTML=photos.length?photos.map((p,i)=>`<div class="pitem${i===0?" cover":""}"><img src="${esc(p.url)}" alt="名片 ${i+1}" data-i="${i}">${i===0?`<span class="ptag">封面</span>`:`<button type="button" class="pmk" data-cover="${i}">設為封面</button>`}<button type="button" class="pdel" data-del="${i}" aria-label="移除這張">×</button></div>`).join(""):`<div class="pempty">還沒有名片照片</div>`;
+    pgrid.innerHTML=photos.length?photos.map((p,i)=>`<div class="pitem"><img src="${esc(p.url)}" alt="名片 ${i+1}" data-i="${i}"><button type="button" class="pdel" data-del="${i}" aria-label="移除這張">×</button></div>`).join(""):`<div class="pempty">還沒有名片照片</div>`;
     pgrid.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{photos.splice(+b.dataset.del,1);drawPhotos()});
-    pgrid.querySelectorAll("[data-cover]").forEach(b=>b.onclick=()=>{const [p]=photos.splice(+b.dataset.cover,1);photos.unshift(p);drawPhotos()});
   };
   async function onFile(e){
     const fs=[...(e.target.files||[])];e.target.value="";
