@@ -74,10 +74,10 @@ button{cursor:pointer}
 
 main .inner{padding-block:16px 110px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
-.bcard{display:grid;grid-template-columns:96px 1fr;gap:12px;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:12px;box-shadow:var(--shadow);min-width:0;position:relative;overflow:hidden}
+.bcard{display:grid;grid-template-columns:112px 1fr;gap:12px;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:12px;box-shadow:var(--shadow);min-width:0;position:relative;overflow:hidden}
 .bcard::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--metal)}
 .bcard:hover{border-color:var(--steel-3)}
-.thumb{width:96px;aspect-ratio:3/4;max-width:100%;border-radius:4px;background:var(--steel-1);display:grid;place-items:center;color:var(--muted);font-size:.7rem;overflow:hidden}
+.thumb{width:112px;aspect-ratio:4/3;max-width:100%;border-radius:4px;background:var(--steel-1);display:grid;place-items:center;color:var(--muted);font-size:.7rem;overflow:hidden}
 .thumb img{width:100%;height:100%;object-fit:contain}
 .thumb img.av{object-fit:cover}
 .who{min-width:0}
@@ -88,11 +88,11 @@ main .inner{padding-block:16px 110px}
 .pcount{position:absolute;left:4px;top:4px;background:var(--black);color:var(--on-black);font-size:.65rem;padding:0 5px;border-radius:4px;line-height:1.5}
 .who-head{display:flex;align-items:center;gap:12px;min-width:0}
 .who-head span{min-width:0}
-.av-head{width:60px;height:80px;border-radius:6px;object-fit:cover;flex:none;border:1px solid var(--line)}
+.av-head{width:88px;height:66px;border-radius:6px;object-fit:cover;flex:none;border:1px solid var(--line)}
 .gallery{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:thin}
 .gallery .photo-big{flex:0 0 100%;scroll-snap-align:center}
 .av-pick{display:flex;gap:14px;align-items:center}
-.av-circle{width:90px;height:120px;flex:none;border-radius:8px;overflow:hidden;background:var(--steel-1);color:var(--steel-3);display:grid;place-items:center;border:1px solid var(--line)}
+.av-circle{width:128px;height:96px;flex:none;border-radius:8px;overflow:hidden;background:var(--steel-1);color:var(--steel-3);display:grid;place-items:center;border:1px solid var(--line)}
 .av-circle svg{width:44px;height:44px}
 .av-circle img{width:100%;height:100%;object-fit:cover}
 .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
@@ -481,8 +481,8 @@ async function shrink(blob,max,q){
 }
 
 async function squareAvatar(blob){
-  /* every profile photo is cropped to the same 3:4 rectangle (300×400) */
-  const W=300,H=400,img=await loadImg(blob),iw=img.naturalWidth,ih=img.naturalHeight;
+  /* every profile photo is cropped to the same landscape 4:3 rectangle (400×300) */
+  const W=400,H=300,img=await loadImg(blob),iw=img.naturalWidth,ih=img.naturalHeight;
   let sw=iw,sh=iw*H/W;if(sh>ih){sh=ih;sw=ih*W/H}
   const cv=document.createElement("canvas");cv.width=W;cv.height=H;
   cv.getContext("2d").drawImage(img,(iw-sw)/2,(ih-sh)/2.6,sw,sh,0,0,W,H);
