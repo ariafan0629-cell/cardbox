@@ -2,7 +2,7 @@
 <html lang="zh-Hant-TW">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <title>名片盒 CardBox</title>
 <meta name="description" content="拍照存名片，記錄賴ID、社群帳號、產業與專長。">
 <meta name="theme-color" content="#f2f3f5" media="(prefers-color-scheme: light)">
@@ -198,6 +198,16 @@ textarea{resize:vertical;min-height:70px}
 #syncState:empty{display:none}
 #syncState[data-on="1"]{border-color:#c6c9cf;color:#eef0f2}
 .menu-list .btn{text-align:left}
+/* keep the edit screen from sliding sideways on phones */
+html,body{overflow-x:hidden;max-width:100%}
+.sheet{overflow-x:hidden;overscroll-behavior:contain}
+#cardForm,#memoForm{grid-template-columns:minmax(0,1fr);touch-action:pan-y}
+#cardForm .row{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:520px){#cardForm .row{grid-template-columns:minmax(0,1fr)}}
+.org-row{grid-template-columns:minmax(0,1fr)}
+.soc-row{grid-template-columns:7em minmax(0,1fr) 36px}
+.av-pick{flex-wrap:wrap}
+.av-pick>div:not(.av-circle){flex:1 1 140px;min-width:0}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(92px + env(safe-area-inset-bottom,0px));background:var(--black);color:var(--on-black);padding:9px 16px;border-radius:8px;z-index:40;font-size:.88rem;border:1px solid #3a3e45}
 @media (prefers-reduced-motion:no-preference){.sheet{animation:up .22s ease-out}@keyframes up{from{opacity:.4;translate:0 24px}to{opacity:1;translate:0 0}}}
 </style>
