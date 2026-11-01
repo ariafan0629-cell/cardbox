@@ -444,7 +444,7 @@ function wireSync(){
 }
 
 let reloadQueued=null;
-function reload(){if(!reloadQueued)reloadQueued=new Promise(r=>requestAnimationFrame(()=>{reloadQueued=null;doReload().then(r)}));return reloadQueued}
+function reload(){if(!reloadQueued)reloadQueued=new Promise(r=>queueMicrotask(()=>{reloadQueued=null;doReload().then(r,r)}));return reloadQueued}
 async function doReload(){if(!cloud&&!idb)return;[cards,memos]=await Promise.all([dbAll(),memoAll()]);memos.sort((a,b)=>b.createdAt-a.createdAt);renderInbox();await render()}
 
 /* ---------- sheet ---------- */
@@ -829,7 +829,7 @@ $("#inbox").onclick=showInbox;
 $("#menuBtn").onclick=showMenu;
 
 (async()=>{
-  try{idb=await openDB();if(navigator.storage?.persist)navigator.storage.persist().catch(()=>{});if(!cloud)await reload()}
+  try{idb=await openDB();if(navigator.storage?.persist)navigator.storage.persist().catch(()=>{});if(!cloud)reload()}
   catch(e){$("#grid").innerHTML=`<p class="hint">這個瀏覽器無法儲存資料（可能是無痕模式）。請用一般模式開啟。</p>`}
   setSyncLabel();initCloud();
 })();
