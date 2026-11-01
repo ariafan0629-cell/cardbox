@@ -1,5 +1,5 @@
-// 讓名片盒在沒有網路時也能打開。改版時把版本號 +1。
-const CACHE = "cardbox-v13";
+// 名片盒離線快取：打開時直接用手機裡存好的版本（很快），同時在背景檢查新版。改版時把版本號 +1。
+const CACHE = "cardbox-v14";
 const CORE = [
   "./", "./index.html", "./manifest.webmanifest",
   "./icons/logo.png", "./icons/favicon.png", "./icons/apple-touch-icon.png",
@@ -18,25 +18,40 @@ self.addEventListener("activate", e => {
   );
 });
 
+async function refreshPage(cache, cached) {
+  try {
+    const res = await fetch("./index.html", { cache: "no-store" });
+    if (!res.ok) return;
+    const fresh = await res.clone().text();
+    const old = cached ? await cached.clone().text() : null;
+    await cache.put("./index.html", res);
+    if (old !== null && old !== fresh) {
+      const list = await self.clients.matchAll({ type: "window" });
+      list.forEach(c => c.postMessage("cardbox-updated"));
+    }
+  } catch (e) { /* 沒網路就用舊版 */ }
+}
+
 self.addEventListener("fetch", e => {
   const req = e.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
 
-  // 頁面本身：先拿最新版，沒網路就用快取
+  // 打開 App：先給手機裡的版本，背景再抓新版
   if (req.mode === "navigate") {
-    e.respondWith(
-      fetch(req)
-        .then(res => { const copy = res.clone(); caches.open(CACHE).then(c => c.put("./index.html", copy)); return res; })
-        .catch(() => caches.match("./index.html"))
-    );
+    e.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      const cached = await cache.match("./index.html");
+      const update = refreshPage(cache, cached);
+      if (cached) { e.waitUntil(update); return cached; }
+      await update;
+      return (await cache.match("./index.html")) || fetch(req);
+    })());
     return;
   }
 
-  // 同站檔案與 Google 字型：快取優先
-  // 只快取本站檔案、Google 字型和 Firebase 程式庫；雲端同步的連線一律直接走網路
+  // 本站圖檔與 Firebase 程式庫：快取優先；雲端同步連線一律直接走網路
   const cacheable = url.origin === location.origin
-    || url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com"
     || (url.hostname === "www.gstatic.com" && url.pathname.startsWith("/firebasejs/"));
   if (cacheable) {
     e.respondWith(
