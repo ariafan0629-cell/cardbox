@@ -267,8 +267,8 @@ html,body{overflow-x:hidden;max-width:100%}
 
 <script>
 const INDUSTRIES=["科技／軟體","製造／電子","金融／保險","行銷／廣告","設計／創意","餐飲／食品","零售／電商","教育","醫療／健康","不動產／建築","法律／會計","政府／公部門","學生／學術","其他"];
-const PLATFORMS=["Instagram","Facebook","Threads","LinkedIn","X","YouTube","TikTok","GitHub","網站","其他"];
-const PLATFORM_URL={Instagram:h=>"https://instagram.com/"+h,Threads:h=>"https://threads.net/@"+h,X:h=>"https://x.com/"+h,GitHub:h=>"https://github.com/"+h,TikTok:h=>"https://tiktok.com/@"+h,YouTube:h=>"https://youtube.com/@"+h};
+const PLATFORMS=["LINE","Instagram","Facebook","Threads","LinkedIn","X","YouTube","TikTok","GitHub","網站","其他"];
+const PLATFORM_URL={LINE:h=>"https://line.me/R/ti/p/"+(h.startsWith("@")?h:"~"+h),Instagram:h=>"https://instagram.com/"+h,Threads:h=>"https://threads.net/@"+h,X:h=>"https://x.com/"+h,GitHub:h=>"https://github.com/"+h,TikTok:h=>"https://tiktok.com/@"+h,YouTube:h=>"https://youtube.com/@"+h};
 
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -379,7 +379,7 @@ const C={
   dbAll:async()=>cloudCards,
   dbPut:async c=>{bg(F.setDoc(cref("cards",c.id),strip(c)))},
   dbDel:async id=>{bg(F.deleteDoc(cref("cards",id)));bg(F.deleteDoc(cref("photos",id)))},
-  photoPut:async(id,b)=>{const big=await shrink(b,1100,.72);const d=await toDataURL(big);photoMem.set(id,big);bg(F.setDoc(cref("photos",id),{d}))},
+  photoPut:async(id,b)=>{const big=await shrink(b,1500,.78);const d=await toDataURL(big);photoMem.set(id,big);bg(F.setDoc(cref("photos",id),{d}))},
   photoDel:async id=>{photoMem.delete(id);bg(F.deleteDoc(cref("photos",id)))},
   photoGet:async id=>{if(photoMem.has(id))return photoMem.get(id);const s=await F.getDoc(cref("photos",id));if(!s.exists())return null;const b=await fromDataURL(s.data().d);photoMem.set(id,b);return b},
   memoAll:async()=>cloudMemos,
@@ -425,19 +425,19 @@ async function initAI(app,base){
   }catch(e){console.warn("AI init failed",e);aiReady=false;aiErr=String(e?.message||e)}
   aiInitDone();
 }
-async function readCard(blob){
+async function readCard(blobs){
   if(!aiReady)throw {code:"ai-off"};
-  const small=await shrink(blob,1400,.85);
-  const b64=(await toDataURL(small)).split(",")[1];
+  blobs=(Array.isArray(blobs)?blobs:[blobs]).slice(0,4);
+  const parts=await Promise.all(blobs.map(async b=>({inlineData:{mimeType:"image/jpeg",data:(await toDataURL(await shrink(b,1400,.85))).split(",")[1]}})));
   const inds=allIndustries().filter(i=>i!=="其他").join("、");
-  const prompt=`這是一張名片照片。請讀出上面的資訊，只回傳一個 JSON 物件，不要其他文字。欄位：
+  const prompt=`${parts.length>1?`這 ${parts.length} 張照片是同一個人的名片（可能是正反面或不同公司的名片），請合併成一份資料。`:"這是一張名片照片。"}請讀出上面的資訊，只回傳一個 JSON 物件，不要其他文字。欄位：
 {"name":"中文姓名","nameEn":"英文姓名","orgs":[{"name":"公司或組織中文名","nameEn":"英文名稱","title":"職稱"}],"phone":"手機或電話（優先手機）","email":"","lineId":"LINE ID","socials":[{"platform":"Instagram|Facebook|Threads|LinkedIn|X|YouTube|TikTok|GitHub|網站|其他","handle":"帳號或網址"}],"industries":["產業"],"skills":["專業技能"]}
 規則：QR Code 會由程式另外讀取，你不用解讀；看不到的欄位給空字串或空陣列；不要編造名片上沒有的聯絡資料。名片上有多個公司或組織就列多筆。industries 優先從這些選：${inds}，都不合適才自己寫一個簡短的產業名；skills 從職稱與業務內容推測 2 到 4 個，用繁體中文。網址放在 socials 的「網站」。`;
   let lastErr;
   for(const model of AI_MODELS){
     try{
       const gm=aiApi.m.getGenerativeModel(aiApi.ai,{model,generationConfig:{responseMimeType:"application/json",temperature:0.1}});
-      const r=await gm.generateContent([prompt,{inlineData:{mimeType:"image/jpeg",data:b64}}]);
+      const r=await gm.generateContent([prompt,...parts]);
       const t=r.response.text().trim().replace(/^```(?:json)?|```$/g,"");
       return JSON.parse(t);
     }catch(e){lastErr=e;if(!/not.?found|404|unsupported|deprecat/i.test(String(e?.message||e)))break}
@@ -625,6 +625,7 @@ async function showForm(c,fromMemo,prefill){
         <button class="btn" type="button" id="aiBtn" hidden>AI 讀取名片</button>
       </div>
       <div class="ai-hint" id="aiHint" hidden></div>
+      <div class="ai-hint" id="qrHint" hidden></div>
     </div>
     <div class="row">
       <label class="f">姓名<input id="f_name" value="${esc(c.name)}" autocomplete="off"></label>
@@ -685,7 +686,7 @@ async function showForm(c,fromMemo,prefill){
     pgrid.querySelectorAll("img[data-i]").forEach(im=>im.onclick=async()=>{
       const i=+im.dataset.i,p=photos[i];const orig=p.blob||await photoGet(p.key).catch(()=>null);if(!orig)return;
       const cut=await cropImage(orig);if(!cut||cut===orig)return;
-      const blob=await shrink(cut,1400,.85);photos[i]={key:null,blob,url:URL.createObjectURL(blob)};drawPhotos();
+      const blob=await shrink(cut,1800,.86);photos[i]={key:null,blob,url:URL.createObjectURL(blob)};drawPhotos();
     });
     $("#aiBtn").hidden=!photos.length;
   };
@@ -722,29 +723,33 @@ async function showForm(c,fromMemo,prefill){
     return n;
   }
   let aiRunning=0;
-  async function runQR(blob){
-    try{const texts=await scanQR(blob);if(!texts.length)return;
+  const qrLine=$("#qrHint");
+  async function runQR(blobs){
+    qrLine.hidden=false;qrLine.textContent="正在找 QR Code…";
+    try{let texts=[];for(const b of blobs){if(b)texts.push(...await scanQR(b))}
+      texts=[...new Set(texts)];
+      if(!texts.length){qrLine.textContent="QR Code：沒有找到。如果名片上有，請拍近一點、避免反光，裁切時保留 QR Code。";return}
       const r=parseQR(texts);const n=applyAI(r);
-      const what=[r.lineId&&"LINE",r.socials.length&&"社群連結",(r.name||r.nameEn)&&"姓名",r.phone&&"電話",r.email&&"Email"].filter(Boolean).join("、");
-      toast(n?`QR Code 讀到：${what||"資料"}，已填入`:"QR Code 的資料已經填過了");
-    }catch(e){console.warn("qr",e)}
+      const what=[r.lineId&&"賴 ID",r.hasLineLink&&"LINE 加好友連結",r.socials.filter(x=>x.platform!=="LINE").length&&"社群／網站",(r.name||r.nameEn)&&"姓名",r.phone&&"電話",r.email&&"Email"].filter(Boolean).join("、")||"資料";
+      qrLine.textContent=n?`QR Code：讀到${what}，已填入。`:`QR Code：讀到${what}，資料已經填過了。`;
+    }catch(e){console.warn("qr",e);qrLine.textContent="QR Code：讀取失敗，請再按一次「AI 讀取名片」。"}
   }
-  async function runAI(blob){
+  async function runAI(blobs){
     aiRunning++;setHint(`<span class="spin" aria-hidden="true"></span>AI 正在讀取名片…`,true);
     if(!aiReady)await Promise.race([aiInit,new Promise(r=>setTimeout(r,20000))]);
     if(!aiReady){aiRunning--;setHint(`AI 辨識沒有啟動，請確認有網路後重新打開名片盒再試。<small class="ai-code">${esc(aiErr||"AI 服務載入逾時")}</small>`);$("#aiBtn").hidden=false;return}
-    try{const r=await readCard(blob);const n=applyAI(r||{});
+    try{const r=await readCard(blobs);const n=applyAI(r||{});
       setHint(n?`已自動填入 ${n} 項資料（有底色的欄位），請檢查一下再儲存。產業和專長是 AI 推測的。`:"沒有讀到新的資料，可能是照片太模糊，或資料已經填過了。");}
     catch(e){const msg=String(e?.message||e?.code||e);
       const code=`<small class="ai-code">${esc(msg.slice(0,160))}</small>`;setHint((/quota|429|RESOURCE_EXHAUSTED/i.test(msg)?"今天的免費辨識次數用完了，請手動填寫，明天會恢復。":/network|fetch|offline/i.test(msg)?"沒有網路，無法辨識。可以先存起來，之後再按「AI 讀取名片」。":/app.?check|403|PERMISSION/i.test(msg)?"AI 辨識還沒開通完成，請稍後再試。":"這張讀不出來，請手動填寫。")+code);$("#aiBtn").hidden=false;console.warn(e)}
     finally{aiRunning--;aiHint.classList.toggle("busy",aiRunning>0)}
   }
-  $("#aiBtn").onclick=()=>{const p=photos[photos.length-1];if(!p)return;(async()=>{const b=p.blob||await photoGet(p.key);runQR(b);runAI(b)})()};
+  $("#aiBtn").onclick=()=>{if(!photos.length)return;(async()=>{const bs=(await Promise.all(photos.map(p=>p.blob||photoGet(p.key).catch(()=>null)))).filter(Boolean);runQR(bs);runAI(bs)})()};
   async function onFile(e){
     const fs=[...(e.target.files||[])];e.target.value="";
     for(const f of fs){
       const cut=await cropImage(f,{title:fs.length>1?`裁切名片（${fs.indexOf(f)+1}／${fs.length}）`:"裁切名片"});if(!cut)continue;
-      try{const blob=await shrink(cut,1400,.85);photos.push({key:null,blob,url:URL.createObjectURL(blob)});drawPhotos();runQR(cut);runAI(blob)}catch(err){toast("有一張圖片讀不了，已略過")}
+      try{const blob=await shrink(cut,1800,.86);photos.push({key:null,blob,url:URL.createObjectURL(blob)});drawPhotos();runQR([cut]);runAI([blob])}catch(err){toast("有一張圖片讀不了，已略過")}
     }
     drawPhotos();
   }
@@ -955,22 +960,31 @@ addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredPrompt=e;
 let jsqrLib=null;
 function loadJsQR(){if(jsqrLib)return jsqrLib;jsqrLib=new Promise((res,rej)=>{const sc=document.createElement("script");sc.src="lib/jsQR.min.js";sc.onload=()=>res(window.jsQR);sc.onerror=()=>{jsqrLib=null;rej(new Error("jsqr"))};document.head.appendChild(sc)});return jsqrLib}
 async function scanQR(blob){
-  const img=await loadImg(blob);const found=new Set();
+  const img=await loadImg(blob);const found=new Set();const W=img.naturalWidth,H=img.naturalHeight;
   if("BarcodeDetector" in window){try{const det=new BarcodeDetector({formats:["qr_code"]});(await det.detect(img)).forEach(c=>c.rawValue&&found.add(c.rawValue))}catch(e){}}
   if(found.size)return [...found];
   let jsQR;try{jsQR=await loadJsQR()}catch(e){return []}
-  /* try a few sizes; small codes need more pixels, big photos are faster smaller */
-  for(const max of [1000,1600,700]){
-    const sc=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight));
-    const cv=document.createElement("canvas");cv.width=Math.round(img.naturalWidth*sc);cv.height=Math.round(img.naturalHeight*sc);
-    const g=cv.getContext("2d",{willReadFrequently:true});g.drawImage(img,0,0,cv.width,cv.height);
-    let data=g.getImageData(0,0,cv.width,cv.height);
-    /* look for up to 3 codes: after each hit, paint over it and search again */
+  const cv=document.createElement("canvas"),g=cv.getContext("2d",{willReadFrequently:true});
+  /* scan one region (sx,sy,sw,sh of the photo) drawn at the given output width; paints over hits and keeps looking */
+  const scan=(sx,sy,sw,sh,outW)=>{
+    const sc=outW/sw;cv.width=Math.max(1,Math.round(sw*sc));cv.height=Math.max(1,Math.round(sh*sc));
+    g.imageSmoothingQuality="high";g.drawImage(img,sx,sy,sw,sh,0,0,cv.width,cv.height);
     for(let k=0;k<3;k++){
-      const r=jsQR(data.data,cv.width,cv.height,{inversionAttempts:"attemptBoth"});if(!r||!r.data)break;
+      const d=g.getImageData(0,0,cv.width,cv.height);
+      const r=jsQR(d.data,cv.width,cv.height,{inversionAttempts:"attemptBoth"});if(!r||!r.data)break;
       found.add(r.data);const l=r.location,xs=[l.topLeftCorner.x,l.topRightCorner.x,l.bottomLeftCorner.x,l.bottomRightCorner.x],ys=[l.topLeftCorner.y,l.topRightCorner.y,l.bottomLeftCorner.y,l.bottomRightCorner.y];
-      const pad=12;g.fillStyle="#fff";g.fillRect(Math.min(...xs)-pad,Math.min(...ys)-pad,Math.max(...xs)-Math.min(...xs)+2*pad,Math.max(...ys)-Math.min(...ys)+2*pad);
-      data=g.getImageData(0,0,cv.width,cv.height);
+      const pad=10;g.fillStyle="#fff";g.fillRect(Math.min(...xs)-pad,Math.min(...ys)-pad,Math.max(...xs)-Math.min(...xs)+2*pad,Math.max(...ys)-Math.min(...ys)+2*pad);
+    }
+  };
+  const tick=()=>new Promise(r=>setTimeout(r,0));
+  for(const w of [1000,1600])if(!found.size){scan(0,0,W,H,Math.min(w,W*2));await tick()}
+  if(found.size)return [...found];
+  /* small QR codes: overlapping tiles (3×2 and 4×3), each enlarged so a module spans several pixels */
+  for(const [cols,rows] of [[3,2],[4,3]]){
+    const tw=W/cols*1.6,th=H/rows*1.6;
+    for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+      const sx=Math.max(0,Math.min(W-tw,(c+0.5)*W/cols-tw/2)),sy=Math.max(0,Math.min(H-th,(r+0.5)*H/rows-th/2));
+      scan(sx,sy,Math.min(tw,W),Math.min(th,H),900);await tick();
     }
     if(found.size)break;
   }
@@ -985,10 +999,11 @@ function parseQR(texts){
     const h=u.hostname.replace(/^(www|m|mobile)\./,"").toLowerCase(),seg=u.pathname.split("/").filter(Boolean);
     if(h==="line.me"||h==="liff.line.me"){
       const i=seg.indexOf("p");const id=i>=0?decodeURIComponent(seg[i+1]||""):"";
-      if(id){out.lineId=id.replace(/^~/,"");return true}
-      addSoc("其他",u.href);out.notes.push("LINE 連結："+u.href);return true;
+      if(id.startsWith("~")){out.lineId=id.slice(1);return true}
+      if(id.startsWith("@")){out.lineId=id;return true}
+      addSoc("LINE",u.href);out.hasLineLink=true;return true;
     }
-    if(h==="lin.ee"){addSoc("其他",u.href);out.notes.push("LINE 好友連結："+u.href);return true}
+    if(h==="lin.ee"){addSoc("LINE",u.href);out.hasLineLink=true;return true}
     const map={"instagram.com":"Instagram","facebook.com":"Facebook","fb.com":"Facebook","fb.me":"Facebook","threads.net":"Threads","threads.com":"Threads","linkedin.com":"LinkedIn","x.com":"X","twitter.com":"X","youtube.com":"YouTube","youtu.be":"YouTube","tiktok.com":"TikTok","github.com":"GitHub"};
     const pf=map[h];
     if(pf){const simple=["Instagram","Threads","X","GitHub","TikTok"].includes(pf)&&seg.length===1&&!/^(p|reel|share)$/.test(seg[0]);addSoc(pf,simple?seg[0].replace(/^@/,""):u.href);return true}
