@@ -208,6 +208,8 @@ html,body{overflow-x:hidden;max-width:100%}
 .av-pick{flex-wrap:wrap}
 .av-pick>div:not(.av-circle){flex:1 1 140px;min-width:0}
 .ai-hint{margin-top:8px;font-size:.84rem;color:var(--ink);background:var(--steel-1);border-radius:8px;padding:8px 10px;display:flex;gap:8px;align-items:center}
+.ai-code{display:block;margin-top:4px;color:var(--muted);font-size:.72rem;overflow-wrap:anywhere}
+.ai-hint{flex-wrap:wrap}
 .spin{width:14px;height:14px;border:2px solid var(--steel-2);border-top-color:var(--ink);border-radius:50%;flex:none;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .ai-filled{background:color-mix(in srgb,var(--steel-2) 45%,var(--bg))!important;transition:background .6s}
@@ -362,7 +364,8 @@ const FB_VER="12.19.0";
 /* AI card reading (Firebase AI Logic, Gemini Developer API). Models are tried in order. */
 const AI_MODELS=["gemini-3.5-flash-lite","gemini-3.5-flash"];
 const APPCHECK_SITE_KEY=null; /* reCAPTCHA Enterprise site key, only needed if App Check is enforced */
-let aiApi=null, aiReady=false;
+let aiApi=null, aiReady=false, aiErr="", aiInit=null, aiInitDone;
+aiInit=new Promise(r=>aiInitDone=r);
 let F=null, fs=null, auth=null, cloud=null, unsubs=[], cloudCards=[], cloudMemos=[];
 const toDataURL=b=>new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(b)});
 const fromDataURL=async u=>(await fetch(u)).blob();
@@ -401,7 +404,7 @@ function setSyncLabel(){const el=$("#syncState");if(!el)return;
   el.textContent=cloud?(pendingUploads?"上傳中…":"已同步"):FIREBASE_CONFIG?"未登入・只存在這台":"";el.dataset.on=cloud?"1":""}
 
 async function initCloud(){
-  if(!FIREBASE_CONFIG)return;
+  if(!FIREBASE_CONFIG){aiInitDone();return}
   try{
     const base=`https://www.gstatic.com/firebasejs/${FB_VER}/`;
     const [a,au,f]=await Promise.all([import(base+"firebase-app.js"),import(base+"firebase-auth.js"),import(base+"firebase-firestore.js")]);
@@ -411,7 +414,7 @@ async function initCloud(){
     auth=F.getAuth(app);
     F.onAuthStateChanged(auth,u=>u?startCloud(u):stopCloud());
     initAI(app,base);
-  }catch(e){console.warn("cloud init failed",e);setSyncLabel()}
+  }catch(e){console.warn("cloud init failed",e);aiErr=String(e?.message||e);aiInitDone();setSyncLabel()}
 }
 async function initAI(app,base){
   try{
@@ -419,7 +422,8 @@ async function initAI(app,base){
     const m=await import(base+"firebase-ai.js");
     const ai=m.getAI(app,{backend:new m.GoogleAIBackend()});
     aiApi={m,ai};aiReady=true;
-  }catch(e){console.warn("AI init failed",e);aiReady=false}
+  }catch(e){console.warn("AI init failed",e);aiReady=false;aiErr=String(e?.message||e)}
+  aiInitDone();
 }
 async function readCard(blob){
   if(!aiReady)throw {code:"ai-off"};
@@ -683,7 +687,7 @@ async function showForm(c,fromMemo,prefill){
       const cut=await cropImage(orig);if(!cut||cut===orig)return;
       const blob=await shrink(cut,1400,.85);photos[i]={key:null,blob,url:URL.createObjectURL(blob)};drawPhotos();
     });
-    $("#aiBtn").hidden=!(aiReady&&photos.length);
+    $("#aiBtn").hidden=!photos.length;
   };
   /* AI reading: fills only empty fields, adds new companies / socials / industries */
   const aiHint=$("#aiHint");
@@ -718,12 +722,13 @@ async function showForm(c,fromMemo,prefill){
   }
   let aiRunning=0;
   async function runAI(blob){
-    if(!aiReady)return;
     aiRunning++;setHint(`<span class="spin" aria-hidden="true"></span>AI 正在讀取名片…`,true);
+    if(!aiReady)await Promise.race([aiInit,new Promise(r=>setTimeout(r,20000))]);
+    if(!aiReady){aiRunning--;setHint(`AI 辨識沒有啟動，請確認有網路後重新打開名片盒再試。<small class="ai-code">${esc(aiErr||"AI 服務載入逾時")}</small>`);$("#aiBtn").hidden=false;return}
     try{const r=await readCard(blob);const n=applyAI(r||{});
       setHint(n?`已自動填入 ${n} 項資料（有底色的欄位），請檢查一下再儲存。產業和專長是 AI 推測的。`:"沒有讀到新的資料，可能是照片太模糊，或資料已經填過了。");}
     catch(e){const msg=String(e?.message||e?.code||e);
-      setHint(/quota|429|RESOURCE_EXHAUSTED/i.test(msg)?"今天的免費辨識次數用完了，請手動填寫，明天會恢復。":/network|fetch|offline/i.test(msg)?"沒有網路，無法辨識。可以先存起來，之後再按「AI 讀取名片」。":/app.?check|403|PERMISSION/i.test(msg)?"AI 辨識還沒開通完成，請稍後再試。":"這張讀不出來，請手動填寫。");console.warn(e)}
+      const code=`<small class="ai-code">${esc(msg.slice(0,160))}</small>`;setHint((/quota|429|RESOURCE_EXHAUSTED/i.test(msg)?"今天的免費辨識次數用完了，請手動填寫，明天會恢復。":/network|fetch|offline/i.test(msg)?"沒有網路，無法辨識。可以先存起來，之後再按「AI 讀取名片」。":/app.?check|403|PERMISSION/i.test(msg)?"AI 辨識還沒開通完成，請稍後再試。":"這張讀不出來，請手動填寫。")+code);$("#aiBtn").hidden=false;console.warn(e)}
     finally{aiRunning--;aiHint.classList.toggle("busy",aiRunning>0)}
   }
   $("#aiBtn").onclick=()=>{const p=photos[photos.length-1];if(!p)return;(async()=>runAI(p.blob||await photoGet(p.key)))()};
