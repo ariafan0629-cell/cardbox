@@ -1,5 +1,5 @@
 // 名片盒離線快取：打開時直接用手機裡存好的版本（很快），同時在背景檢查新版。改版時把版本號 +1。
-const CACHE = "cardbox-v22";
+const CACHE = "cardbox-v23";
 const CORE = [
   "./", "./index.html", "./manifest.webmanifest",
   "./icons/logo.png", "./icons/favicon.png", "./icons/apple-touch-icon.png",

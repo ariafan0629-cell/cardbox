@@ -725,14 +725,14 @@ async function showForm(c,fromMemo,prefill){
   let aiRunning=0;
   const qrLine=$("#qrHint");
   async function runQR(blobs){
-    qrLine.hidden=false;qrLine.textContent="正在找 QR Code…";
+    qrLine.hidden=false;qrLine.textContent="正在找 QR Code…";const t0=Date.now();Object.keys(qrDiag).forEach(k=>delete qrDiag[k]);
     try{let texts=[];for(const b of blobs){if(b)texts.push(...await scanQR(b))}
       texts=[...new Set(texts)];
-      if(!texts.length){qrLine.textContent="QR Code：沒有找到。如果名片上有，請拍近一點、避免反光，裁切時保留 QR Code。";return}
+      if(!texts.length){qrLine.innerHTML=`QR Code：沒有找到。如果名片上有，請拍近一點、避免反光，裁切時保留 QR Code。<small class="ai-code">檢查碼 v23｜照片 ${esc(qrDiag.px||"?")}｜ZXing ${esc(qrDiag.zx||"未執行")}｜jsQR ${esc(qrDiag.jsqr||"未執行")}｜${((Date.now()-t0)/1000).toFixed(1)} 秒</small>`;return}
       const r=parseQR(texts);const n=applyAI(r);
       const what=[r.lineId&&"賴 ID",r.hasLineLink&&"LINE 加好友連結",r.socials.filter(x=>x.platform!=="LINE").length&&"社群／網站",(r.name||r.nameEn)&&"姓名",r.phone&&"電話",r.email&&"Email"].filter(Boolean).join("、")||"資料";
       qrLine.textContent=n?`QR Code：讀到${what}，已填入。`:`QR Code：讀到${what}，資料已經填過了。`;
-    }catch(e){console.warn("qr",e);qrLine.textContent="QR Code：讀取失敗，請再按一次「AI 讀取名片」。"}
+    }catch(e){console.warn("qr",e);qrLine.innerHTML=`QR Code：讀取失敗，請再按一次「AI 讀取名片」。<small class="ai-code">檢查碼 v23｜${esc(String(e?.message||e).slice(0,120))}</small>`}
   }
   async function runAI(blobs){
     aiRunning++;setHint(`<span class="spin" aria-hidden="true"></span>AI 正在讀取名片…`,true);
@@ -939,7 +939,7 @@ function showMenu(){
     <span class="btn filebtn">從備份檔還原<input id="mImport" type="file" accept="application/json,.json" aria-label="從備份檔還原"></span>
     <button class="btn" type="button" id="mCSV">匯出成 Excel 可開的 CSV</button>
   </div>
-  <p class="hint">目前共 ${cards.length} 張名片、${memos.length} 則待整理速記。備份會一起存。</p>`);
+  <p class="hint">目前共 ${cards.length} 張名片、${memos.length} 則待整理速記。備份會一起存。</p><p class="hint">名片盒版本 v23</p>`);
   wireSync();$("#mExport").onclick=exportBackup;$("#mCSV").onclick=exportCSV;
   $("#mImport").onchange=e=>{const f=e.target.files?.[0];if(f)importBackup(f)};
 }
@@ -963,15 +963,17 @@ function loadZX(){if(zxLib)return zxLib;zxLib=new Promise((res,rej)=>{const sc=d
   sc.onload=async()=>{try{const Z=window.ZXingWASM;Z.prepareZXingModule({overrides:{locateFile:(p,pre)=>p.endsWith(".wasm")?new URL("lib/zxing/zxing_reader.wasm",location.href).href:pre+p}},true);res(Z)}catch(e){zxLib=null;rej(e)}};
   sc.onerror=()=>{zxLib=null;rej(new Error("zxing"))};document.head.appendChild(sc)});return zxLib}
 function loadJsQR(){if(jsqrLib)return jsqrLib;jsqrLib=new Promise((res,rej)=>{const sc=document.createElement("script");sc.src="lib/jsQR.min.js";sc.onload=()=>res(window.jsQR);sc.onerror=()=>{jsqrLib=null;rej(new Error("jsqr"))};document.head.appendChild(sc)});return jsqrLib}
+const qrDiag={};
 async function scanQR(blob){
-  const img=await loadImg(blob);const found=new Set();const W=img.naturalWidth,H=img.naturalHeight;
+  qrDiag.size=(blob&&blob.size)||0;qrDiag.bd="BarcodeDetector" in window;
+  const img=await loadImg(blob);qrDiag.px=img.naturalWidth+"×"+img.naturalHeight;const found=new Set();const W=img.naturalWidth,H=img.naturalHeight;
   const deadline=Date.now()+5000,late=()=>Date.now()>deadline;
   if("BarcodeDetector" in window){try{const det=new BarcodeDetector({formats:["qr_code"]});(await det.detect(img)).forEach(c=>c.rawValue&&found.add(c.rawValue))}catch(e){}}
   if(found.size)return [...found];
   const cv=document.createElement("canvas"),g=cv.getContext("2d",{willReadFrequently:true});
   /* 1) ZXing on the whole photo, then on enlarged overlapping pieces */
   try{
-    const Z=await loadZX();
+    const Z=await loadZX();qrDiag.zx="ok";
     const opts={formats:["QRCode"],tryHarder:true,tryRotate:true,tryInvert:true,tryDownscale:true,tryDenoise:true,maxNumberOfSymbols:4};
     const zx=async(sx,sy,sw,sh,outW)=>{const sc=Math.min(outW/sw,3);cv.width=Math.max(1,Math.round(sw*sc));cv.height=Math.max(1,Math.round(sh*sc));g.imageSmoothingQuality="high";g.drawImage(img,sx,sy,sw,sh,0,0,cv.width,cv.height);
       (await Z.readBarcodes(g.getImageData(0,0,cv.width,cv.height),opts)).forEach(r=>r.isValid!==false&&r.text&&found.add(r.text))};
@@ -981,10 +983,10 @@ async function scanQR(blob){
       for(let r=0;r<rows&&!late()&&!found.size;r++)for(let c=0;c<cols&&!late()&&!found.size;c++){const sx=Math.max(0,Math.min(W-tw,(c+0.5)*W/cols-tw/2)),sy=Math.max(0,Math.min(H-th,(r+0.5)*H/rows-th/2));await zx(sx,sy,Math.min(tw,W),Math.min(th,H),1200)}
       if(found.size||late())break;
     }
-  }catch(e){console.warn("zxing",e)}
+  }catch(e){console.warn("zxing",e);qrDiag.zx="✗ "+String(e?.message||e).slice(0,80)}
   if(found.size)return [...found];
   /* 2) fallback: jsQR */
-  let jsQR;try{jsQR=await loadJsQR()}catch(e){return []}
+  let jsQR;try{jsQR=await loadJsQR();qrDiag.jsqr="ok"}catch(e){qrDiag.jsqr="✗ "+String(e?.message||e).slice(0,80);return []}
   /* scan one region (sx,sy,sw,sh of the photo) drawn at the given output width; paints over hits and keeps looking */
   const scan=(sx,sy,sw,sh,outW)=>{
     const sc=outW/sw;cv.width=Math.max(1,Math.round(sw*sc));cv.height=Math.max(1,Math.round(sh*sc));
