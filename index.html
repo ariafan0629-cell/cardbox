@@ -625,7 +625,6 @@ async function showForm(c,fromMemo,prefill){
         <button class="btn" type="button" id="aiBtn" hidden>AI 讀取名片</button>
       </div>
       <div class="ai-hint" id="aiHint" hidden></div>
-      <div class="ai-hint" id="qrHint" hidden></div>
     </div>
     <div class="row">
       <label class="f">姓名<input id="f_name" value="${esc(c.name)}" autocomplete="off"></label>
@@ -722,34 +721,44 @@ async function showForm(c,fromMemo,prefill){
     if(add.length){sk.value=[...cur,...add].join("、");mark(sk);n++}
     return n;
   }
-  let aiRunning=0;
-  const qrLine=$("#qrHint");
-  async function runQR(blobs){
-    qrLine.hidden=false;qrLine.textContent="正在找 QR Code…";const t0=Date.now();Object.keys(qrDiag).forEach(k=>delete qrDiag[k]);
-    try{let texts=[];for(const b of blobs){if(b)texts.push(...await scanQR(b))}
-      texts=[...new Set(texts)];
-      if(!texts.length){qrLine.innerHTML=`QR Code：沒有找到。如果名片上有，請拍近一點、避免反光，裁切時保留 QR Code。<small class="ai-code">檢查碼 v23｜照片 ${esc(qrDiag.px||"?")}｜ZXing ${esc(qrDiag.zx||"未執行")}｜jsQR ${esc(qrDiag.jsqr||"未執行")}｜${((Date.now()-t0)/1000).toFixed(1)} 秒</small>`;return}
-      const r=parseQR(texts);const n=applyAI(r);
-      const what=[r.lineId&&"賴 ID",r.hasLineLink&&"LINE 加好友連結",r.socials.filter(x=>x.platform!=="LINE").length&&"社群／網站",(r.name||r.nameEn)&&"姓名",r.phone&&"電話",r.email&&"Email"].filter(Boolean).join("、")||"資料";
-      qrLine.textContent=n?`QR Code：讀到${what}，已填入。`:`QR Code：讀到${what}，資料已經填過了。`;
-    }catch(e){console.warn("qr",e);qrLine.innerHTML=`QR Code：讀取失敗，請再按一次「AI 讀取名片」。<small class="ai-code">檢查碼 v23｜${esc(String(e?.message||e).slice(0,120))}</small>`}
+  /* one combined status for AI text reading + QR codes, so the two never contradict each other */
+  let readJob=0;
+  async function readPhotos(blobs){
+    const job=++readJob;
+    setHint(`<span class="spin" aria-hidden="true"></span>正在讀取名片（文字與 QR Code）…`,true);
+    Object.keys(qrDiag).forEach(k=>delete qrDiag[k]);
+    const qrTask=(async()=>{let texts=[];for(const b of blobs){if(b)texts.push(...await scanQR(b))}
+      texts=[...new Set(texts)];if(!texts.length)return {found:0,n:0};
+      const r=parseQR(texts);const what=[r.lineId&&"賴 ID",r.hasLineLink&&"LINE 加好友連結",r.socials.filter(x=>x.platform!=="LINE").length&&"社群／網站",(r.name||r.nameEn)&&"姓名",r.phone&&"電話",r.email&&"Email"].filter(Boolean);
+      return {found:texts.length,n:applyAI(r),what}})().catch(e=>({err:String(e?.message||e)}));
+    const aiTask=(async()=>{
+      if(!aiReady)await Promise.race([aiInit,new Promise(r=>setTimeout(r,20000))]);
+      if(!aiReady)return {err:"ai-off"};
+      const r=(await readCard(blobs))||{};
+      const got=Object.values(r).filter(v=>Array.isArray(v)?v.length:String(v??"").trim()).length;
+      return {n:applyAI(r),got};
+    })().catch(e=>({err:String(e?.message||e?.code||e)}));
+    const [qr,ai]=await Promise.all([qrTask,aiTask]);
+    if(job!==readJob||!aiHint.isConnected)return;
+    const n=(qr.n||0)+(ai.n||0);
+    const qrNote=qr.found?`（含 QR Code：${(qr.what&&qr.what.length?qr.what:["資料"]).join("、")}）`:"";
+    let html;
+    if(n){html=`已自動填入 ${n} 項資料${qrNote}，有底色的欄位是剛填的，請檢查一下再儲存。${ai.n?"產業和專長是 AI 推測的。":""}`}
+    else if(qr.found||ai.got){html=`名片上的資料都已經填過了${qrNote}。`}
+    else html="沒有讀到資料，請手動填寫，或拍近一點、避免反光後再按「AI 讀取名片」。";
+    /* only mention the AI being unavailable when it actually cost the user something */
+    if(ai.err){const m=ai.err;
+      const why=/quota|429|RESOURCE_EXHAUSTED/i.test(m)?"今天的免費 AI 辨識次數用完了，明天會恢復":(!navigator.onLine||/Failed to fetch|NetworkError|network request|offline/i.test(m))?"沒有網路，AI 文字辨識沒有執行":m==="ai-off"?"AI 文字辨識沒有啟動，請確認有網路後重新打開名片盒":"AI 文字辨識這次失敗了";
+      html+=`<small class="ai-code">${esc(why)}${qr.found?"；QR Code 的資料不受影響":""}。${m!=="ai-off"&&!/quota|429|RESOURCE_EXHAUSTED|Failed to fetch|NetworkError|offline/i.test(m)?"｜"+esc(m.slice(0,120)):""}</small>`;console.warn(m)}
+    if(!qr.found&&!n&&!ai.got&&qrDiag.px)html+=`<small class="ai-code">v24｜照片 ${esc(qrDiag.px)}｜ZXing ${esc(qrDiag.zx||"未執行")}｜jsQR ${esc(qrDiag.jsqr||"未執行")}</small>`;
+    setHint(html,false);$("#aiBtn").hidden=false;
   }
-  async function runAI(blobs){
-    aiRunning++;setHint(`<span class="spin" aria-hidden="true"></span>AI 正在讀取名片…`,true);
-    if(!aiReady)await Promise.race([aiInit,new Promise(r=>setTimeout(r,20000))]);
-    if(!aiReady){aiRunning--;setHint(`AI 辨識沒有啟動，請確認有網路後重新打開名片盒再試。<small class="ai-code">${esc(aiErr||"AI 服務載入逾時")}</small>`);$("#aiBtn").hidden=false;return}
-    try{const r=await readCard(blobs);const n=applyAI(r||{});
-      setHint(n?`已自動填入 ${n} 項資料（有底色的欄位），請檢查一下再儲存。產業和專長是 AI 推測的。`:"沒有讀到新的資料，可能是照片太模糊，或資料已經填過了。");}
-    catch(e){const msg=String(e?.message||e?.code||e);
-      const code=`<small class="ai-code">${esc(msg.slice(0,160))}</small>`;setHint((/quota|429|RESOURCE_EXHAUSTED/i.test(msg)?"今天的免費辨識次數用完了，請手動填寫，明天會恢復。":/network|fetch|offline/i.test(msg)?"沒有網路，無法辨識。可以先存起來，之後再按「AI 讀取名片」。":/app.?check|403|PERMISSION/i.test(msg)?"AI 辨識還沒開通完成，請稍後再試。":"這張讀不出來，請手動填寫。")+code);$("#aiBtn").hidden=false;console.warn(e)}
-    finally{aiRunning--;aiHint.classList.toggle("busy",aiRunning>0)}
-  }
-  $("#aiBtn").onclick=()=>{if(!photos.length)return;(async()=>{const bs=(await Promise.all(photos.map(p=>p.blob||photoGet(p.key).catch(()=>null)))).filter(Boolean);runQR(bs);runAI(bs)})()};
+  $("#aiBtn").onclick=()=>{if(!photos.length)return;(async()=>{const bs=(await Promise.all(photos.map(p=>p.blob||photoGet(p.key).catch(()=>null)))).filter(Boolean);readPhotos(bs)})()};
   async function onFile(e){
     const fs=[...(e.target.files||[])];e.target.value="";
     for(const f of fs){
       const cut=await cropImage(f,{title:fs.length>1?`裁切名片（${fs.indexOf(f)+1}／${fs.length}）`:"裁切名片"});if(!cut)continue;
-      try{const blob=await shrink(cut,1800,.86);photos.push({key:null,blob,url:URL.createObjectURL(blob)});drawPhotos();runQR([cut]);runAI([blob])}catch(err){toast("有一張圖片讀不了，已略過")}
+      try{const blob=await shrink(cut,1800,.86);photos.push({key:null,blob,url:URL.createObjectURL(blob)});drawPhotos();readPhotos([cut])}catch(err){toast("有一張圖片讀不了，已略過")}
     }
     drawPhotos();
   }
@@ -939,7 +948,7 @@ function showMenu(){
     <span class="btn filebtn">從備份檔還原<input id="mImport" type="file" accept="application/json,.json" aria-label="從備份檔還原"></span>
     <button class="btn" type="button" id="mCSV">匯出成 Excel 可開的 CSV</button>
   </div>
-  <p class="hint">目前共 ${cards.length} 張名片、${memos.length} 則待整理速記。備份會一起存。</p><p class="hint">名片盒版本 v23</p>`);
+  <p class="hint">目前共 ${cards.length} 張名片、${memos.length} 則待整理速記。備份會一起存。</p><p class="hint">名片盒版本 v24</p>`);
   wireSync();$("#mExport").onclick=exportBackup;$("#mCSV").onclick=exportCSV;
   $("#mImport").onchange=e=>{const f=e.target.files?.[0];if(f)importBackup(f)};
 }
@@ -975,12 +984,21 @@ async function scanQR(blob){
   try{
     const Z=await loadZX();qrDiag.zx="ok";
     const opts={formats:["QRCode"],tryHarder:true,tryRotate:true,tryInvert:true,tryDownscale:true,tryDenoise:true,maxNumberOfSymbols:4};
-    const zx=async(sx,sy,sw,sh,outW)=>{const sc=Math.min(outW/sw,3);cv.width=Math.max(1,Math.round(sw*sc));cv.height=Math.max(1,Math.round(sh*sc));g.imageSmoothingQuality="high";g.drawImage(img,sx,sy,sw,sh,0,0,cv.width,cv.height);
-      (await Z.readBarcodes(g.getImageData(0,0,cv.width,cv.height),opts)).forEach(r=>r.isValid!==false&&r.text&&found.add(r.text))};
-    await zx(0,0,W,H,Math.min(2000,W));
-    if(!found.size)for(const [cols,rows] of [[2,2],[3,2]]){
+    /* a fresh, GPU-scaled canvas for every pass: smoother downscaling reads noticeably better */
+    const zx=async(sx,sy,sw,sh,outW)=>{const cv=document.createElement("canvas"),g=cv.getContext("2d");const sc=Math.min(outW/sw,3);cv.width=Math.max(1,Math.round(sw*sc));cv.height=Math.max(1,Math.round(sh*sc));g.imageSmoothingQuality="high";g.drawImage(img,sx,sy,sw,sh,0,0,cv.width,cv.height);
+      const id=g.getImageData(0,0,cv.width,cv.height);
+      (await Z.readBarcodes(id,opts)).forEach(r=>r.isValid!==false&&r.text&&found.add(r.text));
+      /* colored QR codes (red Instagram, green LINE): use each pixel's darkest channel, then stretch contrast */
+      if(colorPass){const d=id.data;let lo=255,hi=0;for(let i=0;i<d.length;i+=4){const v=Math.min(d[i],d[i+1],d[i+2]);d[i]=v;if(v<lo)lo=v;if(v>hi)hi=v}
+        const k=255/Math.max(1,hi-lo);for(let i=0;i<d.length;i+=4){const v=(d[i]-lo)*k;d[i]=d[i+1]=d[i+2]=v}
+        (await Z.readBarcodes(id,opts)).forEach(r=>r.isValid!==false&&r.text&&found.add(r.text))}};
+    let colorPass=false;
+    /* each QR code reads best at a different size, so try several and keep everything found */
+    for(const w of [1200,800,1600,2000]){if(late())break;await zx(0,0,W,H,w)}
+    colorPass=true;for(const w of [1200,800]){if(late())break;await zx(0,0,W,H,w)}colorPass=false;
+    for(const [cols,rows] of [[2,2],[3,2]]){if(cols===3&&found.size)break;
       const tw=W/cols*1.5,th=H/rows*1.5;
-      for(let r=0;r<rows&&!late()&&!found.size;r++)for(let c=0;c<cols&&!late()&&!found.size;c++){const sx=Math.max(0,Math.min(W-tw,(c+0.5)*W/cols-tw/2)),sy=Math.max(0,Math.min(H-th,(r+0.5)*H/rows-th/2));await zx(sx,sy,Math.min(tw,W),Math.min(th,H),1200)}
+      for(let r=0;r<rows&&!late();r++)for(let c=0;c<cols&&!late();c++){const sx=Math.max(0,Math.min(W-tw,(c+0.5)*W/cols-tw/2)),sy=Math.max(0,Math.min(H-th,(r+0.5)*H/rows-th/2));await zx(sx,sy,Math.min(tw,W),Math.min(th,H),1200)}
       if(found.size||late())break;
     }
   }catch(e){console.warn("zxing",e);qrDiag.zx="✗ "+String(e?.message||e).slice(0,80)}
