@@ -1,5 +1,5 @@
 // 名片盒離線快取：打開時直接用手機裡存好的版本（很快），同時在背景檢查新版。改版時把版本號 +1。
-const CACHE = "cardbox-v16";
+const CACHE = "cardbox-v17";
 const CORE = [
   "./", "./index.html", "./manifest.webmanifest",
   "./icons/logo.png", "./icons/favicon.png", "./icons/apple-touch-icon.png",
@@ -55,7 +55,8 @@ self.addEventListener("fetch", e => {
 
   // 本站圖檔與 Firebase 程式庫：快取優先；雲端同步連線一律直接走網路
   const cacheable = url.origin === location.origin
-    || (url.hostname === "www.gstatic.com" && url.pathname.startsWith("/firebasejs/"));
+    || (url.hostname === "www.gstatic.com" && url.pathname.startsWith("/firebasejs/"))
+    || (url.hostname === "cdnjs.cloudflare.com" && url.pathname.includes("/cropperjs/"));
   if (cacheable) {
     e.respondWith(
       caches.match(req).then(hit => hit || fetch(req).then(res => {

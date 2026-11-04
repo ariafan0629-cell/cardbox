@@ -207,6 +207,19 @@ html,body{overflow-x:hidden;max-width:100%}
 .soc-row{grid-template-columns:7em minmax(0,1fr) 36px}
 .av-pick{flex-wrap:wrap}
 .av-pick>div:not(.av-circle){flex:1 1 140px;min-width:0}
+.ai-hint{margin-top:8px;font-size:.84rem;color:var(--ink);background:var(--steel-1);border-radius:8px;padding:8px 10px;display:flex;gap:8px;align-items:center}
+.spin{width:14px;height:14px;border:2px solid var(--steel-2);border-top-color:var(--ink);border-radius:50%;flex:none;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.ai-filled{background:color-mix(in srgb,var(--steel-2) 45%,var(--bg))!important;transition:background .6s}
+.pitem img{cursor:pointer}
+.crop-ui{position:fixed;inset:0;z-index:60;background:#000;display:flex;flex-direction:column;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);touch-action:none}
+.crop-top{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;color:#fff}
+.crop-txt{background:none;border:0;color:#fff;font-size:1rem;padding:8px 4px}
+.crop-txt.strong{font-weight:700;color:#fff;background:#fff2;border-radius:8px;padding:8px 14px}
+.crop-stage{flex:1;min-height:0;position:relative}
+.crop-stage img{display:block;max-width:100%;max-height:100%}
+.crop-bar{display:flex;justify-content:space-around;gap:6px;padding:12px 10px 16px}
+.crop-bar button{flex:1;background:#1d1f23;color:#fff;border:1px solid #33363c;border-radius:10px;padding:11px 4px;font-size:.88rem}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(92px + env(safe-area-inset-bottom,0px));background:var(--black);color:var(--on-black);padding:9px 16px;border-radius:8px;z-index:40;font-size:.88rem;border:1px solid #3a3e45}
 @media (prefers-reduced-motion:no-preference){.sheet{animation:up .22s ease-out}@keyframes up{from{opacity:.4;translate:0 24px}to{opacity:1;translate:0 0}}}
 </style>
@@ -345,7 +358,11 @@ const FIREBASE_CONFIG={
   messagingSenderId:"688035914844",
   appId:"1:688035914844:web:567e9960cfd7126d597299"
 };
-const FB_VER="10.12.2";
+const FB_VER="12.19.0";
+/* AI card reading (Firebase AI Logic, Gemini Developer API). Models are tried in order. */
+const AI_MODELS=["gemini-2.5-flash","gemini-2.5-flash-lite"];
+const APPCHECK_SITE_KEY=null; /* reCAPTCHA Enterprise site key, only needed if App Check is enforced */
+let aiApi=null, aiReady=false;
 let F=null, fs=null, auth=null, cloud=null, unsubs=[], cloudCards=[], cloudMemos=[];
 const toDataURL=b=>new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(b)});
 const fromDataURL=async u=>(await fetch(u)).blob();
@@ -393,7 +410,35 @@ async function initCloud(){
     try{fs=F.initializeFirestore(app,{localCache:F.persistentLocalCache({tabManager:F.persistentMultipleTabManager()})})}catch(e){fs=F.getFirestore(app)}
     auth=F.getAuth(app);
     F.onAuthStateChanged(auth,u=>u?startCloud(u):stopCloud());
+    initAI(app,base);
   }catch(e){console.warn("cloud init failed",e);setSyncLabel()}
+}
+async function initAI(app,base){
+  try{
+    if(APPCHECK_SITE_KEY){const ac=await import(base+"firebase-app-check.js");ac.initializeAppCheck(app,{provider:new ac.ReCaptchaEnterpriseProvider(APPCHECK_SITE_KEY),isTokenAutoRefreshEnabled:true})}
+    const m=await import(base+"firebase-ai.js");
+    const ai=m.getAI(app,{backend:new m.GoogleAIBackend()});
+    aiApi={m,ai};aiReady=true;
+  }catch(e){console.warn("AI init failed",e);aiReady=false}
+}
+async function readCard(blob){
+  if(!aiReady)throw {code:"ai-off"};
+  const small=await shrink(blob,1400,.85);
+  const b64=(await toDataURL(small)).split(",")[1];
+  const inds=allIndustries().filter(i=>i!=="其他").join("、");
+  const prompt=`這是一張名片照片。請讀出上面的資訊，只回傳一個 JSON 物件，不要其他文字。欄位：
+{"name":"中文姓名","nameEn":"英文姓名","orgs":[{"name":"公司或組織中文名","nameEn":"英文名稱","title":"職稱"}],"phone":"手機或電話（優先手機）","email":"","lineId":"LINE ID","socials":[{"platform":"Instagram|Facebook|Threads|LinkedIn|X|YouTube|TikTok|GitHub|網站|其他","handle":"帳號或網址"}],"industries":["產業"],"skills":["專業技能"]}
+規則：看不到的欄位給空字串或空陣列；不要編造名片上沒有的聯絡資料。名片上有多個公司或組織就列多筆。industries 優先從這些選：${inds}，都不合適才自己寫一個簡短的產業名；skills 從職稱與業務內容推測 2 到 4 個，用繁體中文。網址放在 socials 的「網站」。`;
+  let lastErr;
+  for(const model of AI_MODELS){
+    try{
+      const gm=aiApi.m.getGenerativeModel(aiApi.ai,{model,generationConfig:{responseMimeType:"application/json",temperature:0.1}});
+      const r=await gm.generateContent([prompt,{inlineData:{mimeType:"image/jpeg",data:b64}}]);
+      const t=r.response.text().trim().replace(/^```(?:json)?|```$/g,"");
+      return JSON.parse(t);
+    }catch(e){lastErr=e;if(!/not.?found|404|unsupported|deprecat/i.test(String(e?.message||e)))break}
+  }
+  throw lastErr;
 }
 async function startCloud(u){
   stopListeners();cloud={uid:u.uid,email:u.email||"",name:u.displayName||""};urls.forEach((v,k)=>dropURL(k));
@@ -496,6 +541,45 @@ async function shrink(blob,max,q){
   return new Promise(r=>cv.toBlob(b=>r(b),"image/jpeg",q));
 }
 
+let cropLib=null;
+function loadCropper(){
+  if(cropLib)return cropLib;
+  const v="1.6.2",base=`https://cdnjs.cloudflare.com/ajax/libs/cropperjs/${v}/`;
+  cropLib=new Promise((res,rej)=>{
+    const l=document.createElement("link");l.rel="stylesheet";l.href=base+"cropper.min.css";document.head.appendChild(l);
+    const sc=document.createElement("script");sc.src=base+"cropper.min.js";sc.onload=()=>res(window.Cropper);sc.onerror=()=>{cropLib=null;rej(new Error("cropper"))};document.head.appendChild(sc);
+  });
+  return cropLib;
+}
+/* opens a full-screen crop step; resolves a Blob, or null when the viewer cancels */
+async function cropImage(file,{aspect=NaN,title="裁切名片"}={}){
+  let Cropper;try{Cropper=await loadCropper()}catch(e){toast("裁切工具載入失敗，先用原圖");return file}
+  const src=URL.createObjectURL(file);
+  const wrap=document.createElement("div");wrap.className="crop-ui";
+  wrap.innerHTML=`<div class="crop-top"><button type="button" class="crop-txt" data-a="cancel">取消</button><b>${esc(title)}</b><button type="button" class="crop-txt strong" data-a="ok">完成</button></div>
+    <div class="crop-stage"><img alt="" src="${src}"></div>
+    <div class="crop-bar"><button type="button" data-a="rotl">↺ 左轉</button><button type="button" data-a="rotr">右轉 ↻</button><button type="button" data-a="reset">重設</button><button type="button" data-a="orig">用原圖</button></div>`;
+  document.body.appendChild(wrap);
+  const img=wrap.querySelector("img");
+  await new Promise(r=>img.complete?r():img.onload=r);
+  const cr=new Cropper(img,{aspectRatio:aspect,viewMode:1,dragMode:"move",autoCropArea:isNaN(aspect)?0.94:0.8,background:false,guides:true,toggleDragModeOnDblclick:false,responsive:true});
+  /* turning redraws the picture itself, so the crop box always fits the new shape */
+  let cur=file,curUrl=src;
+  const turn=async deg=>{const im=await loadImg(cur);const cv=document.createElement("canvas");cv.width=im.naturalHeight;cv.height=im.naturalWidth;
+    const g=cv.getContext("2d");g.translate(cv.width/2,cv.height/2);g.rotate(deg*Math.PI/180);g.drawImage(im,-im.naturalWidth/2,-im.naturalHeight/2);
+    cur=await new Promise(r=>cv.toBlob(r,"image/jpeg",.92));const u=URL.createObjectURL(cur);cr.replace(u);if(curUrl!==src)URL.revokeObjectURL(curUrl);curUrl=u};
+  return new Promise(resolve=>{
+    const done=v=>{cr.destroy();wrap.remove();URL.revokeObjectURL(src);if(curUrl!==src)URL.revokeObjectURL(curUrl);resolve(v)};
+    wrap.addEventListener("click",e=>{const a=e.target.closest("[data-a]")?.dataset.a;if(!a)return;
+      if(a==="cancel")done(null);
+      else if(a==="orig")done(cur);
+      else if(a==="rotl"||a==="rotr")turn(a==="rotl"?-90:90);
+      else if(a==="reset"){if(cur!==file){cur=file;cr.replace(src);curUrl=src}else cr.reset()}
+      else if(a==="ok"){const cv=cr.getCroppedCanvas({maxWidth:2000,maxHeight:2000,imageSmoothingQuality:"high"});cv?cv.toBlob(b=>done(b||cur),"image/jpeg",.9):done(cur)}
+    });
+  });
+}
+
 async function squareAvatar(blob){
   /* every profile photo is cropped to the same landscape 4:3 rectangle (400×300) */
   const W=400,H=300,img=await loadImg(blob),iw=img.naturalWidth,ih=img.naturalHeight;
@@ -534,7 +618,9 @@ async function showForm(c,fromMemo,prefill){
       <div class="pick-btns">
         <span class="btn primary filebtn">拍名片<input id="fCam" type="file" accept="image/*" capture="environment" aria-label="拍名片"></span>
         <span class="btn filebtn">從相簿選<input id="fPick" type="file" accept="image/*" multiple aria-label="從相簿選名片"></span>
+        <button class="btn" type="button" id="aiBtn" hidden>AI 讀取名片</button>
       </div>
+      <div class="ai-hint" id="aiHint" hidden></div>
     </div>
     <div class="row">
       <label class="f">姓名<input id="f_name" value="${esc(c.name)}" autocomplete="off"></label>
@@ -583,17 +669,70 @@ async function showForm(c,fromMemo,prefill){
   $("#addSoc").onclick=()=>socRow();
   /* avatar */
   const drawAv=()=>{$("#avPv").innerHTML=avatar?`<img src="${esc(avatar)}" alt="大頭照">`:PERSON_SVG;$("#avDel").hidden=!avatar};
-  const onAv=async e=>{const f=e.target.files?.[0];e.target.value="";if(!f)return;try{avatar=await squareAvatar(f)}catch(err){toast("這張圖片讀不了，換一張試試");return}drawAv()};
+  const onAv=async e=>{const f=e.target.files?.[0];e.target.value="";if(!f)return;
+    const cut=await cropImage(f,{aspect:4/3,title:"裁切大頭照"});if(!cut)return;
+    try{avatar=await squareAvatar(cut)}catch(err){toast("這張圖片讀不了，換一張試試");return}drawAv()};
   $("#avCam").onchange=onAv;$("#avPick").onchange=onAv;$("#avDel").onclick=()=>{avatar="";drawAv()};drawAv();
   /* card photos */
   const pgrid=$("#pgrid");
   const drawPhotos=()=>{
     pgrid.innerHTML=photos.length?photos.map((p,i)=>`<div class="pitem">${p.url?`<img src="${esc(p.url)}" alt="名片 ${i+1}" data-i="${i}">`:""}<button type="button" class="pdel" data-del="${i}" aria-label="移除這張">×</button></div>`).join(""):`<div class="pempty">還沒有名片照片</div>`;
     pgrid.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{photos.splice(+b.dataset.del,1);drawPhotos()});
+    pgrid.querySelectorAll("img[data-i]").forEach(im=>im.onclick=async()=>{
+      const i=+im.dataset.i,p=photos[i];const orig=p.blob||await photoGet(p.key).catch(()=>null);if(!orig)return;
+      const cut=await cropImage(orig);if(!cut||cut===orig)return;
+      const blob=await shrink(cut,1400,.85);photos[i]={key:null,blob,url:URL.createObjectURL(blob)};drawPhotos();
+    });
+    $("#aiBtn").hidden=!(aiReady&&photos.length);
   };
+  /* AI reading: fills only empty fields, adds new companies / socials / industries */
+  const aiHint=$("#aiHint");
+  const setHint=(html,busy)=>{aiHint.hidden=!html;aiHint.innerHTML=html;aiHint.classList.toggle("busy",!!busy)};
+  const mark=el=>{el.classList.add("ai-filled");setTimeout(()=>el.classList.remove("ai-filled"),4000)};
+  const fillIfEmpty=(id,v)=>{const el=$("#f_"+id);if(el&&v&&!el.value.trim()){el.value=String(v).trim();mark(el);return 1}return 0};
+  function applyAI(r){
+    let n=0;
+    ["name","nameEn","phone","email","lineId"].forEach(k=>n+=fillIfEmpty(k,r[k]));
+    const rows=[...orgList.children];const have=new Set(rows.map(row=>[...row.querySelectorAll("input")].map(i=>i.value.trim().toLowerCase()).join("|")).filter(x=>x!=="||"));
+    const haveNames=new Set(rows.flatMap(row=>["name","nameEn"].map(k=>row.querySelector(`[data-k="${k}"]`).value.trim().toLowerCase())).filter(Boolean));
+    for(const o of (Array.isArray(r.orgs)?r.orgs:[])){
+      if(!o||!(o.name||o.nameEn))continue;
+      if(haveNames.has((o.name||"").toLowerCase())||haveNames.has((o.nameEn||"").toLowerCase()))continue;
+      const empty=[...orgList.children].find(row=>[...row.querySelectorAll("input")].every(i=>!i.value.trim()));
+      if(empty){["name","nameEn","title"].forEach(k=>{const el=empty.querySelector(`[data-k="${k}"]`);el.value=o[k]||"";if(o[k])mark(el)})}
+      else{orgRow(o);orgList.lastElementChild.querySelectorAll("input").forEach(el=>el.value&&mark(el))}
+      haveNames.add((o.name||"").toLowerCase());haveNames.add((o.nameEn||"").toLowerCase());n++;
+    }
+    const socs=(Array.isArray(r.socials)?r.socials:[]).filter(x=>x&&x.handle);
+    if(socs.length){
+      [...socList.children].forEach(row=>{if(!row.querySelector("input").value.trim())row.remove()});
+      const known=new Set([...socList.children].map(row=>row.querySelector("input").value.trim().toLowerCase()));
+      socs.forEach(x=>{if(known.has(String(x.handle).toLowerCase()))return;socRow(PLATFORMS.includes(x.platform)?x.platform:"其他",x.handle);mark(socList.lastElementChild.querySelector("input"));n++});
+    }
+    for(const i of (Array.isArray(r.industries)?r.industries:[])){const v=String(i||"").trim();if(v&&!sel.has(v)){sel.add(v);if(!allIndustries().includes(v))saveCustomInd(v);n++}}
+    drawInds();
+    const sk=$("#f_skills"),cur=sk.value.split(/[,，、\s]+/).filter(Boolean);
+    const add=(Array.isArray(r.skills)?r.skills:[]).map(x=>String(x).trim()).filter(x=>x&&!cur.includes(x));
+    if(add.length){sk.value=[...cur,...add].join("、");mark(sk);n++}
+    return n;
+  }
+  let aiRunning=0;
+  async function runAI(blob){
+    if(!aiReady)return;
+    aiRunning++;setHint(`<span class="spin" aria-hidden="true"></span>AI 正在讀取名片…`,true);
+    try{const r=await readCard(blob);const n=applyAI(r||{});
+      setHint(n?`已自動填入 ${n} 項資料（有底色的欄位），請檢查一下再儲存。產業和專長是 AI 推測的。`:"沒有讀到新的資料，可能是照片太模糊，或資料已經填過了。");}
+    catch(e){const msg=String(e?.message||e?.code||e);
+      setHint(/quota|429|RESOURCE_EXHAUSTED/i.test(msg)?"今天的免費辨識次數用完了，請手動填寫，明天會恢復。":/network|fetch|offline/i.test(msg)?"沒有網路，無法辨識。可以先存起來，之後再按「AI 讀取名片」。":/app.?check|403|PERMISSION/i.test(msg)?"AI 辨識還沒開通完成，請稍後再試。":"這張讀不出來，請手動填寫。");console.warn(e)}
+    finally{aiRunning--;aiHint.classList.toggle("busy",aiRunning>0)}
+  }
+  $("#aiBtn").onclick=()=>{const p=photos[photos.length-1];if(!p)return;(async()=>runAI(p.blob||await photoGet(p.key)))()};
   async function onFile(e){
     const fs=[...(e.target.files||[])];e.target.value="";
-    for(const f of fs){try{const blob=await shrink(f,1400,.8);photos.push({key:null,blob,url:URL.createObjectURL(blob)})}catch(err){toast("有一張圖片讀不了，已略過")}}
+    for(const f of fs){
+      const cut=await cropImage(f,{title:fs.length>1?`裁切名片（${fs.indexOf(f)+1}／${fs.length}）`:"裁切名片"});if(!cut)continue;
+      try{const blob=await shrink(cut,1400,.85);photos.push({key:null,blob,url:URL.createObjectURL(blob)});drawPhotos();runAI(blob)}catch(err){toast("有一張圖片讀不了，已略過")}
+    }
     drawPhotos();
   }
   $("#fCam").onchange=onFile;$("#fPick").onchange=onFile;drawPhotos();
