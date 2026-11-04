@@ -957,14 +957,34 @@ addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredPrompt=e;
 
 
 /* ---------- QR codes on business cards ---------- */
-let jsqrLib=null;
+let jsqrLib=null,zxLib=null;
+/* ZXing (WebAssembly): the same reader phone camera apps use; much better with logos, glare and blur */
+function loadZX(){if(zxLib)return zxLib;zxLib=new Promise((res,rej)=>{const sc=document.createElement("script");sc.src="lib/zxing/zxing-reader.js";
+  sc.onload=async()=>{try{const Z=window.ZXingWASM;Z.prepareZXingModule({overrides:{locateFile:(p,pre)=>p.endsWith(".wasm")?new URL("lib/zxing/zxing_reader.wasm",location.href).href:pre+p}},true);res(Z)}catch(e){zxLib=null;rej(e)}};
+  sc.onerror=()=>{zxLib=null;rej(new Error("zxing"))};document.head.appendChild(sc)});return zxLib}
 function loadJsQR(){if(jsqrLib)return jsqrLib;jsqrLib=new Promise((res,rej)=>{const sc=document.createElement("script");sc.src="lib/jsQR.min.js";sc.onload=()=>res(window.jsQR);sc.onerror=()=>{jsqrLib=null;rej(new Error("jsqr"))};document.head.appendChild(sc)});return jsqrLib}
 async function scanQR(blob){
   const img=await loadImg(blob);const found=new Set();const W=img.naturalWidth,H=img.naturalHeight;
+  const deadline=Date.now()+5000,late=()=>Date.now()>deadline;
   if("BarcodeDetector" in window){try{const det=new BarcodeDetector({formats:["qr_code"]});(await det.detect(img)).forEach(c=>c.rawValue&&found.add(c.rawValue))}catch(e){}}
   if(found.size)return [...found];
-  let jsQR;try{jsQR=await loadJsQR()}catch(e){return []}
   const cv=document.createElement("canvas"),g=cv.getContext("2d",{willReadFrequently:true});
+  /* 1) ZXing on the whole photo, then on enlarged overlapping pieces */
+  try{
+    const Z=await loadZX();
+    const opts={formats:["QRCode"],tryHarder:true,tryRotate:true,tryInvert:true,tryDownscale:true,tryDenoise:true,maxNumberOfSymbols:4};
+    const zx=async(sx,sy,sw,sh,outW)=>{const sc=Math.min(outW/sw,3);cv.width=Math.max(1,Math.round(sw*sc));cv.height=Math.max(1,Math.round(sh*sc));g.imageSmoothingQuality="high";g.drawImage(img,sx,sy,sw,sh,0,0,cv.width,cv.height);
+      (await Z.readBarcodes(g.getImageData(0,0,cv.width,cv.height),opts)).forEach(r=>r.isValid!==false&&r.text&&found.add(r.text))};
+    await zx(0,0,W,H,Math.min(2000,W));
+    if(!found.size)for(const [cols,rows] of [[2,2],[3,2]]){
+      const tw=W/cols*1.5,th=H/rows*1.5;
+      for(let r=0;r<rows&&!late()&&!found.size;r++)for(let c=0;c<cols&&!late()&&!found.size;c++){const sx=Math.max(0,Math.min(W-tw,(c+0.5)*W/cols-tw/2)),sy=Math.max(0,Math.min(H-th,(r+0.5)*H/rows-th/2));await zx(sx,sy,Math.min(tw,W),Math.min(th,H),1200)}
+      if(found.size||late())break;
+    }
+  }catch(e){console.warn("zxing",e)}
+  if(found.size)return [...found];
+  /* 2) fallback: jsQR */
+  let jsQR;try{jsQR=await loadJsQR()}catch(e){return []}
   /* scan one region (sx,sy,sw,sh of the photo) drawn at the given output width; paints over hits and keeps looking */
   const scan=(sx,sy,sw,sh,outW)=>{
     const sc=outW/sw;cv.width=Math.max(1,Math.round(sw*sc));cv.height=Math.max(1,Math.round(sh*sc));
@@ -982,7 +1002,7 @@ async function scanQR(blob){
   /* small QR codes: overlapping tiles (3×2 and 4×3), each enlarged so a module spans several pixels */
   for(const [cols,rows] of [[3,2],[4,3]]){
     const tw=W/cols*1.6,th=H/rows*1.6;
-    for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+    for(let r=0;r<rows&&!late();r++)for(let c=0;c<cols&&!late();c++){
       const sx=Math.max(0,Math.min(W-tw,(c+0.5)*W/cols-tw/2)),sy=Math.max(0,Math.min(H-th,(r+0.5)*H/rows-th/2));
       scan(sx,sy,Math.min(tw,W),Math.min(th,H),900);await tick();
     }
