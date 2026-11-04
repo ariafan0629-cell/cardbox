@@ -432,7 +432,7 @@ async function readCard(blob){
   const inds=allIndustries().filter(i=>i!=="其他").join("、");
   const prompt=`這是一張名片照片。請讀出上面的資訊，只回傳一個 JSON 物件，不要其他文字。欄位：
 {"name":"中文姓名","nameEn":"英文姓名","orgs":[{"name":"公司或組織中文名","nameEn":"英文名稱","title":"職稱"}],"phone":"手機或電話（優先手機）","email":"","lineId":"LINE ID","socials":[{"platform":"Instagram|Facebook|Threads|LinkedIn|X|YouTube|TikTok|GitHub|網站|其他","handle":"帳號或網址"}],"industries":["產業"],"skills":["專業技能"]}
-規則：看不到的欄位給空字串或空陣列；不要編造名片上沒有的聯絡資料。名片上有多個公司或組織就列多筆。industries 優先從這些選：${inds}，都不合適才自己寫一個簡短的產業名；skills 從職稱與業務內容推測 2 到 4 個，用繁體中文。網址放在 socials 的「網站」。`;
+規則：QR Code 會由程式另外讀取，你不用解讀；看不到的欄位給空字串或空陣列；不要編造名片上沒有的聯絡資料。名片上有多個公司或組織就列多筆。industries 優先從這些選：${inds}，都不合適才自己寫一個簡短的產業名；skills 從職稱與業務內容推測 2 到 4 個，用繁體中文。網址放在 socials 的「網站」。`;
   let lastErr;
   for(const model of AI_MODELS){
     try{
@@ -715,12 +715,20 @@ async function showForm(c,fromMemo,prefill){
     }
     for(const i of (Array.isArray(r.industries)?r.industries:[])){const v=String(i||"").trim();if(v&&!sel.has(v)){sel.add(v);if(!allIndustries().includes(v))saveCustomInd(v);n++}}
     drawInds();
+    if(Array.isArray(r.notes)&&r.notes.length){const nt=$("#f_notes");const add=r.notes.filter(x=>x&&!nt.value.includes(x));if(add.length){nt.value=[nt.value.trim(),...add].filter(Boolean).join("\n");mark(nt);n++}}
     const sk=$("#f_skills"),cur=sk.value.split(/[,，、\s]+/).filter(Boolean);
     const add=(Array.isArray(r.skills)?r.skills:[]).map(x=>String(x).trim()).filter(x=>x&&!cur.includes(x));
     if(add.length){sk.value=[...cur,...add].join("、");mark(sk);n++}
     return n;
   }
   let aiRunning=0;
+  async function runQR(blob){
+    try{const texts=await scanQR(blob);if(!texts.length)return;
+      const r=parseQR(texts);const n=applyAI(r);
+      const what=[r.lineId&&"LINE",r.socials.length&&"社群連結",(r.name||r.nameEn)&&"姓名",r.phone&&"電話",r.email&&"Email"].filter(Boolean).join("、");
+      toast(n?`QR Code 讀到：${what||"資料"}，已填入`:"QR Code 的資料已經填過了");
+    }catch(e){console.warn("qr",e)}
+  }
   async function runAI(blob){
     aiRunning++;setHint(`<span class="spin" aria-hidden="true"></span>AI 正在讀取名片…`,true);
     if(!aiReady)await Promise.race([aiInit,new Promise(r=>setTimeout(r,20000))]);
@@ -731,12 +739,12 @@ async function showForm(c,fromMemo,prefill){
       const code=`<small class="ai-code">${esc(msg.slice(0,160))}</small>`;setHint((/quota|429|RESOURCE_EXHAUSTED/i.test(msg)?"今天的免費辨識次數用完了，請手動填寫，明天會恢復。":/network|fetch|offline/i.test(msg)?"沒有網路，無法辨識。可以先存起來，之後再按「AI 讀取名片」。":/app.?check|403|PERMISSION/i.test(msg)?"AI 辨識還沒開通完成，請稍後再試。":"這張讀不出來，請手動填寫。")+code);$("#aiBtn").hidden=false;console.warn(e)}
     finally{aiRunning--;aiHint.classList.toggle("busy",aiRunning>0)}
   }
-  $("#aiBtn").onclick=()=>{const p=photos[photos.length-1];if(!p)return;(async()=>runAI(p.blob||await photoGet(p.key)))()};
+  $("#aiBtn").onclick=()=>{const p=photos[photos.length-1];if(!p)return;(async()=>{const b=p.blob||await photoGet(p.key);runQR(b);runAI(b)})()};
   async function onFile(e){
     const fs=[...(e.target.files||[])];e.target.value="";
     for(const f of fs){
       const cut=await cropImage(f,{title:fs.length>1?`裁切名片（${fs.indexOf(f)+1}／${fs.length}）`:"裁切名片"});if(!cut)continue;
-      try{const blob=await shrink(cut,1400,.85);photos.push({key:null,blob,url:URL.createObjectURL(blob)});drawPhotos();runAI(blob)}catch(err){toast("有一張圖片讀不了，已略過")}
+      try{const blob=await shrink(cut,1400,.85);photos.push({key:null,blob,url:URL.createObjectURL(blob)});drawPhotos();runQR(cut);runAI(blob)}catch(err){toast("有一張圖片讀不了，已略過")}
     }
     drawPhotos();
   }
@@ -941,6 +949,84 @@ if(/iphone|ipad|ipod/i.test(navigator.userAgent))showTip("加到主畫面：點 
 addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredPrompt=e;
   showTip(`把名片盒 CardBox 裝到手機桌面，開起來就像一般 App。 <button class="btn primary" type="button" id="doInstall" style="margin-top:8px">安裝到桌面</button>`);
   const b=$("#doInstall");if(b)b.onclick=async()=>{deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;hideTip()}});
+
+
+/* ---------- QR codes on business cards ---------- */
+let jsqrLib=null;
+function loadJsQR(){if(jsqrLib)return jsqrLib;jsqrLib=new Promise((res,rej)=>{const sc=document.createElement("script");sc.src="lib/jsQR.min.js";sc.onload=()=>res(window.jsQR);sc.onerror=()=>{jsqrLib=null;rej(new Error("jsqr"))};document.head.appendChild(sc)});return jsqrLib}
+async function scanQR(blob){
+  const img=await loadImg(blob);const found=new Set();
+  if("BarcodeDetector" in window){try{const det=new BarcodeDetector({formats:["qr_code"]});(await det.detect(img)).forEach(c=>c.rawValue&&found.add(c.rawValue))}catch(e){}}
+  if(found.size)return [...found];
+  let jsQR;try{jsQR=await loadJsQR()}catch(e){return []}
+  /* try a few sizes; small codes need more pixels, big photos are faster smaller */
+  for(const max of [1000,1600,700]){
+    const sc=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight));
+    const cv=document.createElement("canvas");cv.width=Math.round(img.naturalWidth*sc);cv.height=Math.round(img.naturalHeight*sc);
+    const g=cv.getContext("2d",{willReadFrequently:true});g.drawImage(img,0,0,cv.width,cv.height);
+    let data=g.getImageData(0,0,cv.width,cv.height);
+    /* look for up to 3 codes: after each hit, paint over it and search again */
+    for(let k=0;k<3;k++){
+      const r=jsQR(data.data,cv.width,cv.height,{inversionAttempts:"attemptBoth"});if(!r||!r.data)break;
+      found.add(r.data);const l=r.location,xs=[l.topLeftCorner.x,l.topRightCorner.x,l.bottomLeftCorner.x,l.bottomRightCorner.x],ys=[l.topLeftCorner.y,l.topRightCorner.y,l.bottomLeftCorner.y,l.bottomRightCorner.y];
+      const pad=12;g.fillStyle="#fff";g.fillRect(Math.min(...xs)-pad,Math.min(...ys)-pad,Math.max(...xs)-Math.min(...xs)+2*pad,Math.max(...ys)-Math.min(...ys)+2*pad);
+      data=g.getImageData(0,0,cv.width,cv.height);
+    }
+    if(found.size)break;
+  }
+  return [...found];
+}
+/* turn QR text into card fields (LINE links, vCard, MECARD, social links, tel:, mailto:) */
+function parseQR(texts){
+  const out={orgs:[],socials:[],notes:[]};
+  const addSoc=(platform,handle)=>{if(handle&&!out.socials.some(x=>x.handle===handle))out.socials.push({platform,handle})};
+  const fromUrl=raw=>{
+    let u;try{u=new URL(/^[a-z]+:\/\//i.test(raw)?raw:"https://"+raw)}catch(e){return false}
+    const h=u.hostname.replace(/^(www|m|mobile)\./,"").toLowerCase(),seg=u.pathname.split("/").filter(Boolean);
+    if(h==="line.me"||h==="liff.line.me"){
+      const i=seg.indexOf("p");const id=i>=0?decodeURIComponent(seg[i+1]||""):"";
+      if(id){out.lineId=id.replace(/^~/,"");return true}
+      addSoc("其他",u.href);out.notes.push("LINE 連結："+u.href);return true;
+    }
+    if(h==="lin.ee"){addSoc("其他",u.href);out.notes.push("LINE 好友連結："+u.href);return true}
+    const map={"instagram.com":"Instagram","facebook.com":"Facebook","fb.com":"Facebook","fb.me":"Facebook","threads.net":"Threads","threads.com":"Threads","linkedin.com":"LinkedIn","x.com":"X","twitter.com":"X","youtube.com":"YouTube","youtu.be":"YouTube","tiktok.com":"TikTok","github.com":"GitHub"};
+    const pf=map[h];
+    if(pf){const simple=["Instagram","Threads","X","GitHub","TikTok"].includes(pf)&&seg.length===1&&!/^(p|reel|share)$/.test(seg[0]);addSoc(pf,simple?seg[0].replace(/^@/,""):u.href);return true}
+    addSoc("網站",u.href);return true;
+  };
+  for(const raw of texts){
+    const t=String(raw).trim();
+    if(/^BEGIN:VCARD/i.test(t)){
+      const lines=t.replace(/\r?\n[ \t]/g,"").split(/\r?\n/);
+      const val=l=>l.slice(l.indexOf(":")+1).replace(/\\,/g,",").replace(/\;/g,";").replace(/\\n/gi," ").trim();
+      let org="",title="";
+      for(const l of lines){const key=l.split(":")[0].split(";")[0].toUpperCase();const v=val(l);if(!v)continue;
+        if(key==="FN"){/[一-鿿]/.test(v)?(out.name=out.name||v):(out.nameEn=out.nameEn||v)}
+        else if(key==="N"&&!out.name&&!out.nameEn){const [fam,giv]=v.split(";");const n=/[一-鿿]/.test(fam+giv)?(fam||"")+(giv||""):[giv,fam].filter(Boolean).join(" ");/[一-鿿]/.test(n)?out.name=n:out.nameEn=n}
+        else if(key==="ORG")org=v.split(";")[0];
+        else if(key==="TITLE")title=v;
+        else if(key==="TEL"&&!out.phone)out.phone=v.replace(/^tel:/i,"");
+        else if(key==="EMAIL"&&!out.email)out.email=v;
+        else if(key==="URL"||key.startsWith("X-SOCIALPROFILE"))fromUrl(v);
+        else if(key==="X-LINE"||/LINE/i.test(l.split(":")[0])&&!/URL/i.test(key))out.lineId=out.lineId||v;
+        else if(key==="NOTE")out.notes.push(v);}
+      if(org||title)out.orgs.push(/[一-鿿]/.test(org)?{name:org,nameEn:"",title}:{name:"",nameEn:org,title});
+      continue;
+    }
+    if(/^MECARD:/i.test(t)){
+      t.slice(7).split(/;(?=[A-Z\-]+:)/).forEach(part=>{const i=part.indexOf(":");const k=part.slice(0,i).toUpperCase(),v=part.slice(i+1).replace(/;+$/,"").trim();if(!v)return;
+        if(k==="N"){const n=v.split(",").reverse().join(/[一-鿿]/.test(v)?"":" ");/[一-鿿]/.test(n)?out.name=n:out.nameEn=n}
+        else if(k==="TEL")out.phone=out.phone||v;else if(k==="EMAIL")out.email=out.email||v;else if(k==="URL")fromUrl(v);else if(k==="ORG")out.orgs.push({name:v,nameEn:"",title:""});else if(k==="NOTE")out.notes.push(v)});
+      continue;
+    }
+    if(/^tel:/i.test(t)){out.phone=out.phone||t.slice(4);continue}
+    if(/^mailto:/i.test(t)){out.email=out.email||t.slice(7).split("?")[0];continue}
+    if(/^(https?:\/\/|www\.)/i.test(t)||/^[\w-]+(\.[\w-]+)+\/\S*$/.test(t)){fromUrl(t);continue}
+    if(/^[\w.+-]+@[\w-]+\.[\w.]+$/.test(t)){out.email=out.email||t;continue}
+    out.notes.push("QR Code："+t);
+  }
+  return out;
+}
 
 /* ---------- Enter moves to the next field ---------- */
 const FIELD_SEL='input:not([type=file]):not([type=hidden]):not([type=checkbox]):not([type=radio]),select,textarea';
