@@ -16,6 +16,9 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js" crossorigin>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js" crossorigin>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js" crossorigin>
 <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
 <style>
 /* Layout: brushed-steel card file. Black header strip with the logo, silver index tabs, cards filed in a grid; detail and edit open as a bottom sheet. */
@@ -279,10 +282,10 @@ function toast(m){const t=$("#toast");t.textContent=m;t.hidden=false;clearTimeou
 
 /* ---------- IndexedDB (cards + photo blobs, kept on this phone) ---------- */
 let idb;
-function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open("cardbox",2);
+function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open("cardbox",3);
   r.onupgradeneeded=()=>{const d=r.result;const has=n=>d.objectStoreNames.contains(n);
     if(!has("cards"))d.createObjectStore("cards",{keyPath:"id"});if(!has("photos"))d.createObjectStore("photos");
-    if(!has("memos"))d.createObjectStore("memos",{keyPath:"id"});if(!has("audio"))d.createObjectStore("audio")};
+    if(!has("memos"))d.createObjectStore("memos",{keyPath:"id"});if(!has("audio"))d.createObjectStore("audio");if(!has("meta"))d.createObjectStore("meta")};
   r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
 function tx(store,mode,fn){return new Promise((res,rej)=>{const t=idb.transaction(store,mode);const out=fn(t);t.oncomplete=()=>res(out?.result??out);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error)})}
 const L_dbAll=()=>tx("cards","readonly",t=>t.objectStore("cards").getAll());
@@ -411,8 +414,10 @@ const memoDel=id=>cloud?C.memoDel(id):L_memoDel(id);
 const audioPut=(id,b)=>cloud?C.audioPut(id,b):L_audioPut(id,b);
 const audioGet=id=>cloud?C.audioGet(id):L_audioGet(id);
 
+let authPending=true,dbReadyP=null;
 function setSyncLabel(){const el=$("#syncState");if(!el)return;
-  el.textContent=cloud?(pendingUploads?"上傳中…":"已同步"):FIREBASE_CONFIG?"未登入・只存在這台":"";el.dataset.on=cloud?"1":""}
+  let was=false;try{was=!!localStorage.getItem("cardbox.lastUid")}catch(e){}
+  el.textContent=cloud?(pendingUploads?"上傳中…":"已同步"):FIREBASE_CONFIG?(authPending&&was?"同步中…":"未登入・只存在這台"):"";el.dataset.on=cloud?"1":""}
 
 async function initCloud(){
   if(!FIREBASE_CONFIG){aiInitDone();return}
@@ -423,9 +428,9 @@ async function initCloud(){
     const app=F.initializeApp(FIREBASE_CONFIG);
     try{fs=F.initializeFirestore(app,{localCache:F.persistentLocalCache({tabManager:F.persistentMultipleTabManager()})})}catch(e){fs=F.getFirestore(app)}
     auth=F.getAuth(app);
-    F.onAuthStateChanged(auth,u=>u?startCloud(u):stopCloud());
+    F.onAuthStateChanged(auth,u=>{authPending=false;if(u)startCloud(u);else{try{localStorage.removeItem("cardbox.lastUid")}catch(e){}stopCloud()}});
     initAI(app,base);
-  }catch(e){console.warn("cloud init failed",e);aiErr=String(e?.message||e);aiInitDone();setSyncLabel()}
+  }catch(e){console.warn("cloud init failed",e);aiErr=String(e?.message||e);aiInitDone();authPending=false;setSyncLabel()}
 }
 async function initAI(app,base){
   try{
@@ -459,13 +464,20 @@ async function startCloud(u){
   stopListeners();cloud={uid:u.uid,email:u.email||"",name:u.displayName||""};urls.forEach((v,k)=>dropURL(k));
   setSyncLabel();
   let first=true;
-  unsubs.push(F.onSnapshot(F.collection(fs,"users",u.uid,"cards"),snap=>{cloudCards=snap.docs.map(d=>d.data());if(cloud)reload()},e=>toast("同步中斷："+e.code)));
-  unsubs.push(F.onSnapshot(F.collection(fs,"users",u.uid,"memos"),snap=>{cloudMemos=snap.docs.map(d=>d.data());if(cloud)reload()},e=>{}));
+  unsubs.push(F.onSnapshot(F.collection(fs,"users",u.uid,"cards"),snap=>{cloudCards=snap.docs.map(d=>d.data());if(cloud){reload();saveSnapshot(u.uid)}},e=>toast("同步中斷："+e.code)));
+  unsubs.push(F.onSnapshot(F.collection(fs,"users",u.uid,"memos"),snap=>{cloudMemos=snap.docs.map(d=>d.data());if(cloud){reload();saveSnapshot(u.uid)}},e=>{}));
   migrateLocal(u.uid).catch(e=>console.warn(e));
 }
 function stopListeners(){unsubs.forEach(f=>f());unsubs=[];cloudCards=[];cloudMemos=[]}
+/* remember the last synced list on this phone so the next start can show it immediately */
+let snapTimer=null;
+function saveSnapshot(uid){clearTimeout(snapTimer);snapTimer=setTimeout(()=>{if(!idb||!cloud||cloud.uid!==uid)return;
+  try{tx("meta","readwrite",t=>{t.objectStore("meta").put({cards:cloudCards,memos:cloudMemos,at:Date.now()},"cloud:"+uid)}).catch(()=>{});localStorage.setItem("cardbox.lastUid",uid)}catch(e){}},600)}
+async function loadSnapshot(){try{const uid=localStorage.getItem("cardbox.lastUid");if(!uid||!idb)return null;
+  const v=await tx("meta","readonly",t=>t.objectStore("meta").get("cloud:"+uid));return v&&Array.isArray(v.cards)?{uid,...v}:null}catch(e){return null}}
 function stopCloud(){const was=!!cloud;stopListeners();cloud=null;urls.forEach((v,k)=>dropURL(k));setSyncLabel();if(was||idb)reload()}
 async function migrateLocal(uid){
+  if(dbReadyP)await dbReadyP.catch(()=>{});if(!idb)return;
   const key="cardbox.migrated."+uid;try{if(localStorage.getItem(key))return}catch(e){}
   const [lc,lm]=await Promise.all([L_dbAll(),L_memoAll()]);if(!lc.length&&!lm.length){try{localStorage.setItem(key,"1")}catch(e){}return}
   const existing=new Set((await F.getDocs(F.collection(fs,"users",uid,"cards"))).docs.map(d=>d.id));
@@ -495,7 +507,7 @@ function syncSection(){
 }
 function wireSync(){
   const g=$("#sGoogle");if(g)g.onclick=async()=>{try{await F.signInWithPopup(auth,new F.GoogleAuthProvider());closeSheet();toast("已登入，開始同步")}catch(e){toast(authErr(e))}};
-  const o=$("#sOut");if(o)o.onclick=async()=>{await F.signOut(auth);closeSheet();toast("已登出")};
+  const o=$("#sOut");if(o)o.onclick=async()=>{try{localStorage.removeItem("cardbox.lastUid")}catch(e){}await F.signOut(auth);closeSheet();toast("已登出")};
   const f=$("#sForm");if(f){
     const go=async up=>{const em=$("#s_email").value.trim(),pw=$("#s_pw").value;if(!em||!pw){toast("請輸入 Email 和密碼");return}
       try{await (up?F.createUserWithEmailAndPassword:F.signInWithEmailAndPassword)(auth,em,pw);closeSheet();toast(up?"帳號已建立，開始同步":"已登入，開始同步")}catch(e){toast(authErr(e))}};
@@ -767,7 +779,7 @@ async function showForm(c,fromMemo,prefill){
     if(ai.err){const m=ai.err;
       const why=/quota|429|RESOURCE_EXHAUSTED/i.test(m)?"今天的免費 AI 辨識次數用完了，明天會恢復":(!navigator.onLine||/Failed to fetch|NetworkError|network request|offline/i.test(m))?"沒有網路，AI 文字辨識沒有執行":m==="ai-off"?"AI 文字辨識沒有啟動，請確認有網路後重新打開名片盒":"AI 文字辨識這次失敗了";
       html+=`<small class="ai-code">${esc(why)}${qr.found?"；QR Code 的資料不受影響":""}。${m!=="ai-off"&&!/quota|429|RESOURCE_EXHAUSTED|Failed to fetch|NetworkError|offline/i.test(m)?"｜"+esc(m.slice(0,120)):""}</small>`;console.warn(m)}
-    if(!qr.found&&!n&&!ai.got&&qrDiag.px)html+=`<small class="ai-code">v24｜照片 ${esc(qrDiag.px)}｜ZXing ${esc(qrDiag.zx||"未執行")}｜jsQR ${esc(qrDiag.jsqr||"未執行")}</small>`;
+    if(!qr.found&&!n&&!ai.got&&qrDiag.px)html+=`<small class="ai-code">v26｜照片 ${esc(qrDiag.px)}｜ZXing ${esc(qrDiag.zx||"未執行")}｜jsQR ${esc(qrDiag.jsqr||"未執行")}</small>`;
     setHint(html,false);$("#aiBtn").hidden=false;
   }
   $("#aiBtn").onclick=()=>{if(!photos.length)return;(async()=>{const bs=(await Promise.all(photos.map(p=>p.blob||photoGet(p.key).catch(()=>null)))).filter(Boolean);readPhotos(bs)})()};
@@ -970,7 +982,7 @@ function showMenu(){
     <span class="btn filebtn">從備份檔還原<input id="mImport" type="file" accept="application/json,.json" aria-label="從備份檔還原"></span>
     <button class="btn" type="button" id="mCSV">匯出成 Excel 可開的 CSV</button>
   </div>
-  <p class="hint">目前共 ${cards.length} 張名片、${memos.length} 則待整理速記。備份會一起存。</p><p class="hint">名片盒版本 v25</p>`);
+  <p class="hint">目前共 ${cards.length} 張名片、${memos.length} 則待整理速記。備份會一起存。</p><p class="hint">名片盒版本 v26</p>`);
   wireSync();$("#mExport").onclick=exportBackup;$("#mCSV").onclick=exportCSV;
   $("#mImport").onchange=e=>{const f=e.target.files?.[0];if(f)importBackup(f)};
 }
@@ -1136,9 +1148,17 @@ $("#inbox").onclick=showInbox;
 $("#menuBtn").onclick=showMenu;
 
 (async()=>{
-  try{idb=await openDB();if(navigator.storage?.persist)navigator.storage.persist().catch(()=>{});if(!cloud)reload()}
-  catch(e){$("#grid").innerHTML=`<p class="hint">這個瀏覽器無法儲存資料（可能是無痕模式）。請用一般模式開啟。</p>`}
-  setSyncLabel();initCloud();
+  let wasSignedIn=false;try{wasSignedIn=!!localStorage.getItem("cardbox.lastUid")}catch(e){}
+  if(wasSignedIn)$("#empty").hidden=true;
+  const dbReady=dbReadyP=openDB().then(d=>{idb=d;if(navigator.storage?.persist)navigator.storage.persist().catch(()=>{})});
+  initCloud();
+  try{await dbReady}catch(e){$("#grid").innerHTML=`<p class="hint">這個瀏覽器無法儲存資料（可能是無痕模式）。請用一般模式開啟。</p>`;setSyncLabel();return}
+  if(!cloud){
+    const snap=wasSignedIn?await loadSnapshot():null;
+    if(snap&&!cloud){cards=snap.cards;memos=(snap.memos||[]).sort((a,b)=>b.createdAt-a.createdAt);renderInbox();render()}
+    else if(!cloud)reload();
+  }
+  setSyncLabel();
 })();
 if("serviceWorker" in navigator&&location.protocol!=="file:"){
   addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
