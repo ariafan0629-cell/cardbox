@@ -222,6 +222,9 @@ html,body{overflow-x:hidden;max-width:100%}
 .crop-stage img{display:block;max-width:100%;max-height:100%}
 .crop-bar{display:flex;justify-content:space-around;gap:6px;padding:12px 10px 16px}
 .crop-bar button{flex:1;background:#1d1f23;color:#fff;border:1px solid #33363c;border-radius:10px;padding:11px 4px;font-size:.88rem}
+.bday-row{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr);gap:8px;align-items:center}
+.bday-row select,.bday-row input{padding:10px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font-size:16px;min-width:0;width:100%}
+.chip.bday{background:var(--surface);border:1px solid var(--ink);color:var(--ink);font-weight:600}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(92px + env(safe-area-inset-bottom,0px));background:var(--black);color:var(--on-black);padding:9px 16px;border-radius:8px;z-index:40;font-size:.88rem;border:1px solid #3a3e45}
 @media (prefers-reduced-motion:no-preference){.sheet{animation:up .22s ease-out}@keyframes up{from{opacity:.4;translate:0 24px}to{opacity:1;translate:0 0}}}
 </style>
@@ -299,6 +302,14 @@ function orgsOf(c){
   return (c.company||c.companyEn||c.title)?[{name:c.company||"",nameEn:c.companyEn||"",title:c.title||""}]:[];
 }
 const orgLabel=o=>o.name||o.nameEn||"";
+function bdayParts(c){const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(c.birthday||"");if(!m)return null;return {y:+m[1]||0,m:+m[2],d:+m[3]}}
+/* days until the next birthday (0 = today) */
+function daysToBday(c){const b=bdayParts(c);if(!b)return null;const t=new Date();t.setHours(0,0,0,0);
+  let n=new Date(t.getFullYear(),b.m-1,b.d);if(b.m===2&&b.d===29&&n.getMonth()!==1)n=new Date(t.getFullYear(),2,1);
+  if(n<t)n=new Date(t.getFullYear()+1,b.m-1,b.d);return Math.round((n-t)/864e5)}
+function bdayLabel(c){const b=bdayParts(c);if(!b)return"";let s=`${b.m} 月 ${b.d} 日`;
+  if(b.y){const t=new Date();let age=t.getFullYear()-b.y;if(t.getMonth()+1<b.m||(t.getMonth()+1===b.m&&t.getDate()<b.d))age--;s=`${b.y} 年 ${s}（${age} 歲）`}
+  const n=daysToBday(c);if(n===0)s+="・今天生日";else if(n<=30)s+=`・還有 ${n} 天`;return s}
 /* several business-card photos per person; older cards stored one photo under the card id */
 const photoKeys=c=>Array.isArray(c.photoIds)?c.photoIds:(c.hasPhoto?[c.id]:[]);
 /* several industries per person, including ones the user types in */
@@ -322,7 +333,7 @@ function cardHTML(c,src,ex){
       <div class="name">${esc(c.name||c.nameEn||"（未命名）")}${c.name&&c.nameEn?`<span class="name-en">${esc(c.nameEn)}</span>`:""}</div>
       ${(()=>{const os=orgsOf(c),o=os[0];if(!o)return"";return `<div class="role">${esc([o.title,orgLabel(o)].filter(Boolean).join(" · "))}</div>${o.name&&o.nameEn?`<div class="role en">${esc(o.nameEn)}</div>`:""}${os.length>1?`<div class="role more">另有 ${os.length-1} 個公司／組織：${esc(os.slice(1).map(orgLabel).filter(Boolean).join("、"))}</div>`:""}`})()}
       ${c.lineId?`<div class="line-id">LINE ${esc(c.lineId)}</div>`:""}
-      <div class="chips">${indsOf(c).map(i=>`<span class="chip ind">${esc(i)}</span>`).join("")}${(c.skills||[]).slice(0,3).map(s=>`<span class="chip">${esc(s)}</span>`).join("")}</div>
+      <div class="chips">${(()=>{const n=daysToBday(c);return n!==null&&n<=14?`<span class="chip bday">${n===0?"今天生日":`${bdayParts(c).m}/${bdayParts(c).d} 生日・${n} 天後`}</span>`:""})()}${indsOf(c).map(i=>`<span class="chip ind">${esc(i)}</span>`).join("")}${(c.skills||[]).slice(0,3).map(s=>`<span class="chip">${esc(s)}</span>`).join("")}</div>
     </div></button>`;
 }
 async function render(){
@@ -431,7 +442,7 @@ async function readCard(blobs){
   const parts=await Promise.all(blobs.map(async b=>({inlineData:{mimeType:"image/jpeg",data:(await toDataURL(await shrink(b,1400,.85))).split(",")[1]}})));
   const inds=allIndustries().filter(i=>i!=="其他").join("、");
   const prompt=`${parts.length>1?`這 ${parts.length} 張照片是同一個人的名片（可能是正反面或不同公司的名片），請合併成一份資料。`:"這是一張名片照片。"}請讀出上面的資訊，只回傳一個 JSON 物件，不要其他文字。欄位：
-{"name":"中文姓名","nameEn":"英文姓名","orgs":[{"name":"公司或組織中文名","nameEn":"英文名稱","title":"職稱"}],"phone":"手機或電話（優先手機）","email":"","lineId":"LINE ID","socials":[{"platform":"Instagram|Facebook|Threads|LinkedIn|X|YouTube|TikTok|GitHub|網站|其他","handle":"帳號或網址"}],"industries":["產業"],"skills":["專業技能"]}
+{"name":"中文姓名","nameEn":"英文姓名","orgs":[{"name":"公司或組織中文名","nameEn":"英文名稱","title":"職稱"}],"phone":"手機或電話（優先手機）","email":"","lineId":"LINE ID","socials":[{"platform":"Instagram|Facebook|Threads|LinkedIn|X|YouTube|TikTok|GitHub|網站|其他","handle":"帳號或網址"}],"industries":["產業"],"skills":["專業技能"],"birthday":"名片上有印生日才填，格式 YYYY-MM-DD，不知道年份用 0000-MM-DD"}
 規則：QR Code 會由程式另外讀取，你不用解讀；看不到的欄位給空字串或空陣列；不要編造名片上沒有的聯絡資料。名片上有多個公司或組織就列多筆。industries 優先從這些選：${inds}，都不合適才自己寫一個簡短的產業名；skills 從職稱與業務內容推測 2 到 4 個，用繁體中文。網址放在 socials 的「網站」。`;
   let lastErr;
   for(const model of AI_MODELS){
@@ -518,6 +529,7 @@ async function showDetail(c,ex){
   openSheet(`<div class="sheet-head"><h2 class="who-head">${c.avatar?`<img class="av-head" src="${esc(c.avatar)}" alt="">`:""}<span>${esc(c.name||c.nameEn||"（未命名）")}${c.name&&c.nameEn?`<span class="name-en">${esc(c.nameEn)}</span>`:""}</span></h2><button class="x" type="button" data-close aria-label="關閉">×</button></div>
     ${pkeys.length?`<div class="gallery">${pkeys.map((k,i)=>`<img class="photo-big" data-pk="${esc(k)}" alt="名片照片 ${i+1}">`).join("")}</div>${pkeys.length>1?`<div class="hint" style="margin-top:4px">${pkeys.length} 張名片，左右滑動查看</div>`:""}`:""}
     <dl class="kv">
+      ${c.birthday&&bdayParts(c)?`<dt>生日</dt><dd>${esc(bdayLabel(c))}</dd>`:""}
       ${(()=>{const os=orgsOf(c);if(!os.length)return"";return `<dt>${os.length>1?"公司／組織":"公司"}</dt><dd><div class="org-list">${os.map(o=>`<div class="org-item"><b>${esc(orgLabel(o))}</b>${o.name&&o.nameEn?` <span class="sub2">${esc(o.nameEn)}</span>`:""}${o.title?`<div class="sub2">${esc(o.title)}</div>`:""}</div>`).join("")}</div></dd>`})()}${indsOf(c).length?`<dt>產業</dt><dd><div class="chips" style="margin:0">${indsOf(c).map(i=>`<span class="chip ind">${esc(i)}</span>`).join("")}</div></dd>`:""}
       ${c.skills?.length?`<dt>專長</dt><dd><div class="chips" style="margin:0">${c.skills.map(s=>`<span class="chip">${esc(s)}</span>`).join("")}</div></dd>`:""}
       ${row("賴 ID",c.lineId,true)}${row("電話",c.phone,true)}${row("Email",c.email,true)}
@@ -630,6 +642,10 @@ async function showForm(c,fromMemo,prefill){
       <label class="f">姓名<input id="f_name" value="${esc(c.name)}" autocomplete="off"></label>
       <label class="f">英文名<input id="f_nameEn" value="${esc(c.nameEn)}" placeholder="例如：Kevin Wang" autocapitalize="words" autocomplete="off"></label>
     </div>
+    ${(()=>{const b=bdayParts(c)||{};return `<div class="bday-row"><span class="legend" style="margin:0">生日</span>
+      <select id="f_bm" aria-label="生日月份"><option value="">月</option>${Array.from({length:12},(_,i)=>`<option value="${i+1}"${b.m===i+1?" selected":""}>${i+1} 月</option>`).join("")}</select>
+      <select id="f_bd" aria-label="生日日期"><option value="">日</option>${Array.from({length:31},(_,i)=>`<option value="${i+1}"${b.d===i+1?" selected":""}>${i+1} 日</option>`).join("")}</select>
+      <input id="f_by" type="number" inputmode="numeric" min="1900" max="${new Date().getFullYear()}" placeholder="年份" value="${b.y||""}" aria-label="生日年份" autocomplete="off"></div>`})()}
     <div class="legend">公司與組織（第一筆是主要的）</div>
     <div id="orgList" style="display:grid;gap:8px"></div>
     <div><button class="btn" type="button" id="addOrg">＋ 新增公司或組織</button></div>
@@ -697,6 +713,7 @@ async function showForm(c,fromMemo,prefill){
   function applyAI(r){
     let n=0;
     ["name","nameEn","phone","email","lineId"].forEach(k=>n+=fillIfEmpty(k,r[k]));
+    {const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(r.birthday||"");if(m&&!$("#f_bm").value){$("#f_bm").value=String(+m[2]);$("#f_bd").value=String(+m[3]);if(+m[1])$("#f_by").value=m[1];[$("#f_bm"),$("#f_bd")].forEach(mark);n++}}
     const rows=[...orgList.children];const have=new Set(rows.map(row=>[...row.querySelectorAll("input")].map(i=>i.value.trim().toLowerCase()).join("|")).filter(x=>x!=="||"));
     const haveNames=new Set(rows.flatMap(row=>["name","nameEn"].map(k=>row.querySelector(`[data-k="${k}"]`).value.trim().toLowerCase())).filter(Boolean));
     for(const o of (Array.isArray(r.orgs)?r.orgs:[])){
@@ -779,7 +796,12 @@ async function showForm(c,fromMemo,prefill){
     const orgs=[...orgList.children].map(r=>{const g=k=>r.querySelector(`[data-k="${k}"]`).value.trim();return {name:g("name"),nameEn:g("nameEn"),title:g("title")}}).filter(o=>o.name||o.nameEn||o.title);
     const p0=orgs[0]||{};
         const industries=allIndustries([...sel]).filter(i=>sel.has(i));
-    const out={...c,name:v("name"),nameEn:v("nameEn"),orgs,company:p0.name||"",companyEn:p0.nameEn||"",title:p0.title||"",industries,industry:industries[0]||"",
+    const bm=+$("#f_bm").value,bd=+$("#f_bd").value,by=+$("#f_by").value;
+    if((bm&&!bd)||(!bm&&bd)){toast("生日請同時選月份和日期");$(bm?"#f_bd":"#f_bm").focus();return}
+    if(bm&&bd&&new Date(2000,bm-1,bd).getDate()!==bd){toast(`${bm} 月沒有 ${bd} 日，請再確認生日`);$("#f_bd").focus();return}
+    if(by&&(by<1900||by>new Date().getFullYear())){toast("生日年份看起來不對，請再確認");$("#f_by").focus();return}
+    const birthday=bm&&bd?`${by?String(by).padStart(4,"0"):"0000"}-${String(bm).padStart(2,"0")}-${String(bd).padStart(2,"0")}`:"";
+    const out={...c,birthday,name:v("name"),nameEn:v("nameEn"),orgs,company:p0.name||"",companyEn:p0.nameEn||"",title:p0.title||"",industries,industry:industries[0]||"",
       skills:v("skills").split(/[,，、\s]+/).filter(Boolean),
       lineId:v("lineId"),phone:v("phone"),email:v("email"),metAt:v("metAt"),notes:v("notes"),
       socials:[...socList.children].map(r=>({platform:r.querySelector("select").value,handle:r.querySelector("input").value.trim()})).filter(x=>x.handle),
@@ -928,7 +950,7 @@ async function importBackup(file){
   closeSheet();await reload();toast(`已匯入 ${n} 張名片`);
 }
 async function exportCSV(){
-  const cols=[["姓名","name"],["英文名","nameEn"],["公司／組織",c=>orgsOf(c).map(orgLabel).join(" | ")],["英文名稱",c=>orgsOf(c).map(o=>o.nameEn).join(" | ")],["職稱",c=>orgsOf(c).map(o=>o.title).join(" | ")],["產業",c=>indsOf(c).join("、")],["專長",c=>(c.skills||[]).join("、")],["賴ID","lineId"],["電話","phone"],["Email","email"],["社群",c=>(c.socials||[]).map(s=>s.platform+":"+s.handle).join(" | ")],["認識於","metAt"],["備註","notes"]];
+  const cols=[["姓名","name"],["英文名","nameEn"],["生日",c=>{const b=bdayParts(c);return b?(b.y?`${b.y}/`:"")+`${b.m}/${b.d}`:""}],["公司／組織",c=>orgsOf(c).map(orgLabel).join(" | ")],["英文名稱",c=>orgsOf(c).map(o=>o.nameEn).join(" | ")],["職稱",c=>orgsOf(c).map(o=>o.title).join(" | ")],["產業",c=>indsOf(c).join("、")],["專長",c=>(c.skills||[]).join("、")],["賴ID","lineId"],["電話","phone"],["Email","email"],["社群",c=>(c.socials||[]).map(s=>s.platform+":"+s.handle).join(" | ")],["認識於","metAt"],["備註","notes"]];
   const q=v=>`"${String(v??"").replace(/"/g,'""')}"`;
   const lines=[cols.map(c=>q(c[0])).join(",")].concat(cards.map(c=>cols.map(([,k])=>q(typeof k==="function"?k(c):c[k])).join(",")));
   const blob=new Blob(["﻿"+lines.join("\r\n")],{type:"text/csv"});
@@ -948,7 +970,7 @@ function showMenu(){
     <span class="btn filebtn">從備份檔還原<input id="mImport" type="file" accept="application/json,.json" aria-label="從備份檔還原"></span>
     <button class="btn" type="button" id="mCSV">匯出成 Excel 可開的 CSV</button>
   </div>
-  <p class="hint">目前共 ${cards.length} 張名片、${memos.length} 則待整理速記。備份會一起存。</p><p class="hint">名片盒版本 v24</p>`);
+  <p class="hint">目前共 ${cards.length} 張名片、${memos.length} 則待整理速記。備份會一起存。</p><p class="hint">名片盒版本 v25</p>`);
   wireSync();$("#mExport").onclick=exportBackup;$("#mCSV").onclick=exportCSV;
   $("#mImport").onchange=e=>{const f=e.target.files?.[0];if(f)importBackup(f)};
 }
