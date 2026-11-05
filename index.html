@@ -260,6 +260,7 @@ html,body{overflow-x:hidden;max-width:100%}
     <div id="empty" class="empty" hidden>
       <h2>名片盒還是空的</h2>
     </div>
+    <script>try{var s=JSON.parse(localStorage.getItem("cardbox.shell")||"null");if(s&&s.grid){document.getElementById("grid").innerHTML=s.grid;document.getElementById("tabs").innerHTML=s.tabs;var c=document.getElementById("count");c.hidden=!s.n;c.textContent=s.n+" 張";window.__shell=s}}catch(e){}</script>
   </div>
 </main>
 
@@ -331,7 +332,7 @@ function matches(c){
 }
 function cardHTML(c,src,ex){
   return `<button class="bcard" type="button" data-id="${esc(c.id)}"${ex?' data-ex="1"':""}>
-    <div class="thumb">${c.avatar?`<img class="av" src="${esc(c.avatar)}" alt="" loading="lazy" decoding="async">`:src?`<img src="${esc(src)}" alt="" loading="lazy" decoding="async">`:"無照片"}${!c.avatar&&photoKeys(c).length>1?`<span class="pcount">${photoKeys(c).length} 張</span>`:""}</div>
+    <div class="thumb">${c.avatar?`<img class="av" src="${esc(c.avatar)}" alt="" decoding="async">`:src?`<img src="${esc(src)}" alt="" decoding="async">`:"無照片"}${!c.avatar&&photoKeys(c).length>1?`<span class="pcount">${photoKeys(c).length} 張</span>`:""}</div>
     <div class="who">
       <div class="name">${esc(c.name||c.nameEn||"（未命名）")}${c.name&&c.nameEn?`<span class="name-en">${esc(c.nameEn)}</span>`:""}</div>
       ${(()=>{const os=orgsOf(c),o=os[0];if(!o)return"";return `<div class="role">${esc([o.title,orgLabel(o)].filter(Boolean).join(" · "))}</div>${o.name&&o.nameEn?`<div class="role en">${esc(o.nameEn)}</div>`:""}${os.length>1?`<div class="role more">另有 ${os.length-1} 個公司／組織：${esc(os.slice(1).map(orgLabel).filter(Boolean).join("、"))}</div>`:""}`})()}
@@ -339,16 +340,24 @@ function cardHTML(c,src,ex){
       <div class="chips">${(()=>{const n=daysToBday(c);return n!==null&&n<=14?`<span class="chip bday">${n===0?"今天生日":`${bdayParts(c).m}/${bdayParts(c).d} 生日・${n} 天後`}</span>`:""})()}${indsOf(c).map(i=>`<span class="chip ind">${esc(i)}</span>`).join("")}${(c.skills||[]).slice(0,3).map(s=>`<span class="chip">${esc(s)}</span>`).join("")}</div>
     </div></button>`;
 }
+let lastTabs=(window.__shell&&window.__shell.tabs)||"",lastGrid=(window.__shell&&window.__shell.grid)||"",shellTimer=null;
+function saveShell(tabs,grid,n){clearTimeout(shellTimer);shellTimer=setTimeout(()=>{try{
+  if(/src="blob:/.test(grid)||grid.length>2500000){localStorage.removeItem("cardbox.shell");return}
+  localStorage.setItem("cardbox.shell",JSON.stringify({tabs,grid,n}))}catch(e){try{localStorage.removeItem("cardbox.shell")}catch(_){}}},400)}
+function clearShell(){try{localStorage.removeItem("cardbox.shell")}catch(e){}}
 async function render(){
   const counts={};cards.forEach(c=>{const is=indsOf(c);(is.length?is:["其他"]).forEach(k=>counts[k]=(counts[k]||0)+1)});
   const used=allIndustries().filter(i=>counts[i]);
   if(filter!=="全部"&&!counts[filter])filter="全部";
-  $("#tabs").innerHTML=["全部",...used].map(i=>`<button class="tab" type="button" data-f="${esc(i)}" aria-pressed="${i===filter}">${esc(i)}<span class="n">${i==="全部"?cards.length:counts[i]}</span></button>`).join("");
+  const tabsHTML=["全部",...used].map(i=>`<button class="tab" type="button" data-f="${esc(i)}" aria-pressed="${i===filter}">${esc(i)}<span class="n">${i==="全部"?cards.length:counts[i]}</span></button>`).join("");
+  if(tabsHTML!==lastTabs){$("#tabs").innerHTML=tabsHTML;lastTabs=tabsHTML}
   $("#count").hidden=!cards.length;$("#count").textContent=`${cards.length} 張`;
   $("#empty").hidden=cards.length>0;
   const list=cards.filter(matches).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   const srcs=await Promise.all(list.map(c=>c.thumb?c.thumb:(!cloud&&photoKeys(c).length)?photoURL(photoKeys(c)[0]):""));
-  $("#grid").innerHTML=list.map((c,i)=>cardHTML(c,srcs[i])).join("")+(cards.length&&!list.length?`<p class="hint">沒有符合「${esc(query||filter)}」的名片。</p>`:"");
+  const gridHTML=list.map((c,i)=>cardHTML(c,srcs[i])).join("")+(cards.length&&!list.length?`<p class="hint">沒有符合「${esc(query||filter)}」的名片。</p>`:"");
+  if(gridHTML!==lastGrid){$("#grid").innerHTML=gridHTML;lastGrid=gridHTML}
+  if(filter==="全部"&&!query)saveShell(tabsHTML,gridHTML,cards.length);
 }
 const L_memoAll=()=>tx("memos","readonly",t=>t.objectStore("memos").getAll());
 const L_memoPut=m=>tx("memos","readwrite",t=>{t.objectStore("memos").put(m)});
@@ -428,7 +437,7 @@ async function initCloud(){
     const app=F.initializeApp(FIREBASE_CONFIG);
     try{fs=F.initializeFirestore(app,{localCache:F.persistentLocalCache({tabManager:F.persistentMultipleTabManager()})})}catch(e){fs=F.getFirestore(app)}
     auth=F.getAuth(app);
-    F.onAuthStateChanged(auth,u=>{authPending=false;if(u)startCloud(u);else{try{localStorage.removeItem("cardbox.lastUid")}catch(e){}stopCloud()}});
+    F.onAuthStateChanged(auth,u=>{authPending=false;if(u){try{const prev=localStorage.getItem("cardbox.lastUid");if(prev&&prev!==u.uid)clearShell()}catch(e){}startCloud(u)}else{try{if(localStorage.getItem("cardbox.lastUid")){localStorage.removeItem("cardbox.lastUid");clearShell()}}catch(e){}stopCloud()}});
     initAI(app,base);
   }catch(e){console.warn("cloud init failed",e);aiErr=String(e?.message||e);aiInitDone();authPending=false;setSyncLabel()}
 }
@@ -507,7 +516,7 @@ function syncSection(){
 }
 function wireSync(){
   const g=$("#sGoogle");if(g)g.onclick=async()=>{try{await F.signInWithPopup(auth,new F.GoogleAuthProvider());closeSheet();toast("已登入，開始同步")}catch(e){toast(authErr(e))}};
-  const o=$("#sOut");if(o)o.onclick=async()=>{try{localStorage.removeItem("cardbox.lastUid")}catch(e){}await F.signOut(auth);closeSheet();toast("已登出")};
+  const o=$("#sOut");if(o)o.onclick=async()=>{try{localStorage.removeItem("cardbox.lastUid")}catch(e){}clearShell();await F.signOut(auth);closeSheet();toast("已登出")};
   const f=$("#sForm");if(f){
     const go=async up=>{const em=$("#s_email").value.trim(),pw=$("#s_pw").value;if(!em||!pw){toast("請輸入 Email 和密碼");return}
       try{await (up?F.createUserWithEmailAndPassword:F.signInWithEmailAndPassword)(auth,em,pw);closeSheet();toast(up?"帳號已建立，開始同步":"已登入，開始同步")}catch(e){toast(authErr(e))}};
@@ -779,7 +788,7 @@ async function showForm(c,fromMemo,prefill){
     if(ai.err){const m=ai.err;
       const why=/quota|429|RESOURCE_EXHAUSTED/i.test(m)?"今天的免費 AI 辨識次數用完了，明天會恢復":(!navigator.onLine||/Failed to fetch|NetworkError|network request|offline/i.test(m))?"沒有網路，AI 文字辨識沒有執行":m==="ai-off"?"AI 文字辨識沒有啟動，請確認有網路後重新打開名片盒":"AI 文字辨識這次失敗了";
       html+=`<small class="ai-code">${esc(why)}${qr.found?"；QR Code 的資料不受影響":""}。${m!=="ai-off"&&!/quota|429|RESOURCE_EXHAUSTED|Failed to fetch|NetworkError|offline/i.test(m)?"｜"+esc(m.slice(0,120)):""}</small>`;console.warn(m)}
-    if(!qr.found&&!n&&!ai.got&&qrDiag.px)html+=`<small class="ai-code">v26｜照片 ${esc(qrDiag.px)}｜ZXing ${esc(qrDiag.zx||"未執行")}｜jsQR ${esc(qrDiag.jsqr||"未執行")}</small>`;
+    if(!qr.found&&!n&&!ai.got&&qrDiag.px)html+=`<small class="ai-code">v27｜照片 ${esc(qrDiag.px)}｜ZXing ${esc(qrDiag.zx||"未執行")}｜jsQR ${esc(qrDiag.jsqr||"未執行")}</small>`;
     setHint(html,false);$("#aiBtn").hidden=false;
   }
   $("#aiBtn").onclick=()=>{if(!photos.length)return;(async()=>{const bs=(await Promise.all(photos.map(p=>p.blob||photoGet(p.key).catch(()=>null)))).filter(Boolean);readPhotos(bs)})()};
@@ -982,7 +991,7 @@ function showMenu(){
     <span class="btn filebtn">從備份檔還原<input id="mImport" type="file" accept="application/json,.json" aria-label="從備份檔還原"></span>
     <button class="btn" type="button" id="mCSV">匯出成 Excel 可開的 CSV</button>
   </div>
-  <p class="hint">目前共 ${cards.length} 張名片、${memos.length} 則待整理速記。備份會一起存。</p><p class="hint">名片盒版本 v26</p>`);
+  <p class="hint">目前共 ${cards.length} 張名片、${memos.length} 則待整理速記。備份會一起存。</p><p class="hint">名片盒版本 v27</p>`);
   wireSync();$("#mExport").onclick=exportBackup;$("#mCSV").onclick=exportCSV;
   $("#mImport").onchange=e=>{const f=e.target.files?.[0];if(f)importBackup(f)};
 }
@@ -1149,7 +1158,7 @@ $("#menuBtn").onclick=showMenu;
 
 (async()=>{
   let wasSignedIn=false;try{wasSignedIn=!!localStorage.getItem("cardbox.lastUid")}catch(e){}
-  if(wasSignedIn)$("#empty").hidden=true;
+  if(wasSignedIn||window.__shell)$("#empty").hidden=true;
   const dbReady=dbReadyP=openDB().then(d=>{idb=d;if(navigator.storage?.persist)navigator.storage.persist().catch(()=>{})});
   initCloud();
   try{await dbReady}catch(e){$("#grid").innerHTML=`<p class="hint">這個瀏覽器無法儲存資料（可能是無痕模式）。請用一般模式開啟。</p>`;setSyncLabel();return}
