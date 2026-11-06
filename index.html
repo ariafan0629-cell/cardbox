@@ -168,7 +168,12 @@ main .inner{padding-block:16px 110px}
 .mono{font-family:var(--f-mono)}
 .copy{border:1px solid var(--line);background:transparent;border-radius:6px;padding:1px 8px;font-size:.75rem;margin-left:6px}
 .socials{display:flex;flex-direction:column;gap:4px}
-.socials a{color:var(--ink);text-decoration-color:var(--steel-3)}
+.socials{gap:6px!important}
+.ext{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;color:var(--ink);text-decoration:none;background:var(--surface);min-width:0}
+.ext:active{background:var(--steel-1)}
+.ext-pf{font-size:.75rem;color:var(--muted);flex:none;min-width:4.2em}
+.ext-h{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ext-go{flex:none;color:var(--muted)}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
 .btn{border:1px solid var(--line);background:var(--surface);padding:10px 16px;border-radius:8px;font-weight:500;text-decoration:none;display:inline-block}
 .btn.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:700}
@@ -534,12 +539,54 @@ function closeSheet(){$("#sheet").hidden=true;$("#scrim").hidden=true;$("#sheet"
 $("#scrim").onclick=closeSheet;
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#sheet").hidden)closeSheet()});
 
-function socialLink(s){
-  const h=(s.handle||"").replace(/^@/,"");
-  if(/^https?:\/\//i.test(h))return `<a href="${esc(h)}" target="_blank" rel="noopener">${esc(s.platform)} · ${esc(h)}</a>`;
-  const f=PLATFORM_URL[s.platform];
-  return f?`<a href="${esc(f(h))}" target="_blank" rel="noopener">${esc(s.platform)} · @${esc(h)}</a>`:`<span>${esc(s.platform)} · ${esc(h)}</span>`;
+/* where a social account / website points: the web address, plus the app's own link when there is one */
+function socialTarget(sx){
+  let h=String(sx.handle||"").trim();const pf=sx.platform;
+  const domainLike=/^[\w-]+(\.[\w-]+)+(\/\S*)?$/i.test(h);
+  /* a bare "name.tw" is a website only under 網站/其他; for LINE, Instagram etc. a dotted name is an account name */
+  const isUrl=/^https?:\/\//i.test(h)||/^www\./i.test(h)||(domainLike&&(pf==="網站"||pf==="其他"||/\//.test(h)));
+  if(isUrl&&!/^https?:\/\//i.test(h))h="https://"+h;
+  let web,app=null;
+  if(isUrl){web=h;try{const u=new URL(h),host=u.hostname.replace(/^(www|m)\./,""),seg=u.pathname.split("/").filter(Boolean);
+      if(host==="instagram.com"&&seg[0]&&!/^(p|reel|stories)$/.test(seg[0]))app="instagram://user?username="+encodeURIComponent(seg[0]);
+      else if((host==="threads.net"||host==="threads.com")&&seg[0])app="barcelona://user?username="+encodeURIComponent(seg[0].replace(/^@/,""));
+      else if((host==="x.com"||host==="twitter.com")&&seg[0])app="twitter://user?screen_name="+encodeURIComponent(seg[0]);
+      else if(host==="facebook.com"||host==="fb.com")app="fb://facewebmodal/f?href="+encodeURIComponent(h);
+      else if(host==="line.me"&&seg.includes("p"))app="line://ti/p/"+seg[seg.indexOf("p")+1];
+      else if(host==="youtube.com"||host==="youtu.be")app="youtube://"+h.replace(/^https?:\/\//,"");
+      else if(host==="linkedin.com"&&seg[0]==="in"&&seg[1])app="linkedin://in/"+encodeURIComponent(seg[1]);
+    }catch(e){}}
+  else{const n=h.replace(/^@/,"");const e=encodeURIComponent(n);
+    switch(pf){
+      case"LINE":web=`https://line.me/R/ti/p/${n.startsWith("@")||h.startsWith("@")?"@"+n:"~"+n}`;app=`line://ti/p/${h.startsWith("@")?"@"+n:"~"+n}`;break;
+      case"Instagram":web=`https://www.instagram.com/${e}/`;app=`instagram://user?username=${e}`;break;
+      case"Threads":web=`https://www.threads.net/@${e}`;app=`barcelona://user?username=${e}`;break;
+      case"Facebook":web=`https://www.facebook.com/${e}`;app=`fb://facewebmodal/f?href=${encodeURIComponent(web)}`;break;
+      case"X":web=`https://x.com/${e}`;app=`twitter://user?screen_name=${e}`;break;
+      case"YouTube":web=`https://www.youtube.com/@${e}`;app=`youtube://www.youtube.com/@${e}`;break;
+      case"TikTok":web=`https://www.tiktok.com/@${e}`;break;
+      case"LinkedIn":web=`https://www.linkedin.com/in/${e}`;app=`linkedin://in/${e}`;break;
+      case"GitHub":web=`https://github.com/${e}`;break;
+      default:web=null;
+    }}
+  return {web,app,label:isUrl?h.replace(/^https?:\/\/(www\.)?/,"").replace(/\/$/,""):(pf==="網站"||pf==="其他"||(pf==="LINE"&&!h.startsWith("@"))?h:"@"+h.replace(/^@/,""))};
 }
+function socialLink(sx){
+  const t=socialTarget(sx);
+  if(!t.web)return `<span>${esc(sx.platform)} · ${esc(sx.handle)}</span>`;
+  return `<a class="ext" href="${esc(t.web)}" target="_blank" rel="noopener" data-app="${esc(t.app||"")}"><span class="ext-pf">${esc(sx.platform)}</span><span class="ext-h">${esc(t.label)}</span><span class="ext-go" aria-hidden="true">↗</span></a>`;
+}
+/* phones: try the app first; if it doesn't open within a moment, open the web page instead */
+const isPhone=/iphone|ipad|ipod|android/i.test(navigator.userAgent);
+document.addEventListener("click",e=>{
+  const a=e.target.closest("a.ext");if(!a)return;
+  const app=a.dataset.app;if(!app||!isPhone)return;
+  e.preventDefault();
+  let left=false;const onHide=()=>{if(document.visibilityState==="hidden")left=true};
+  document.addEventListener("visibilitychange",onHide);
+  location.href=app;
+  setTimeout(()=>{document.removeEventListener("visibilitychange",onHide);if(!left)window.open(a.href,"_blank","noopener")},1200);
+});
 async function copyText(v,el){
   try{await navigator.clipboard.writeText(v);toast("已複製")}
   catch(e){const r=document.createRange();r.selectNodeContents(el);const s=getSelection();s.removeAllRanges();s.addRange(r);toast("已選取，請手動複製")}
@@ -788,7 +835,7 @@ async function showForm(c,fromMemo,prefill){
     if(ai.err){const m=ai.err;
       const why=/quota|429|RESOURCE_EXHAUSTED/i.test(m)?"今天的免費 AI 辨識次數用完了，明天會恢復":(!navigator.onLine||/Failed to fetch|NetworkError|network request|offline/i.test(m))?"沒有網路，AI 文字辨識沒有執行":m==="ai-off"?"AI 文字辨識沒有啟動，請確認有網路後重新打開名片盒":"AI 文字辨識這次失敗了";
       html+=`<small class="ai-code">${esc(why)}${qr.found?"；QR Code 的資料不受影響":""}。${m!=="ai-off"&&!/quota|429|RESOURCE_EXHAUSTED|Failed to fetch|NetworkError|offline/i.test(m)?"｜"+esc(m.slice(0,120)):""}</small>`;console.warn(m)}
-    if(!qr.found&&!n&&!ai.got&&qrDiag.px)html+=`<small class="ai-code">v27｜照片 ${esc(qrDiag.px)}｜ZXing ${esc(qrDiag.zx||"未執行")}｜jsQR ${esc(qrDiag.jsqr||"未執行")}</small>`;
+    if(!qr.found&&!n&&!ai.got&&qrDiag.px)html+=`<small class="ai-code">v28｜照片 ${esc(qrDiag.px)}｜ZXing ${esc(qrDiag.zx||"未執行")}｜jsQR ${esc(qrDiag.jsqr||"未執行")}</small>`;
     setHint(html,false);$("#aiBtn").hidden=false;
   }
   $("#aiBtn").onclick=()=>{if(!photos.length)return;(async()=>{const bs=(await Promise.all(photos.map(p=>p.blob||photoGet(p.key).catch(()=>null)))).filter(Boolean);readPhotos(bs)})()};
@@ -991,7 +1038,7 @@ function showMenu(){
     <span class="btn filebtn">從備份檔還原<input id="mImport" type="file" accept="application/json,.json" aria-label="從備份檔還原"></span>
     <button class="btn" type="button" id="mCSV">匯出成 Excel 可開的 CSV</button>
   </div>
-  <p class="hint">目前共 ${cards.length} 張名片、${memos.length} 則待整理速記。備份會一起存。</p><p class="hint">名片盒版本 v27</p>`);
+  <p class="hint">目前共 ${cards.length} 張名片、${memos.length} 則待整理速記。備份會一起存。</p><p class="hint">名片盒版本 v28</p>`);
   wireSync();$("#mExport").onclick=exportBackup;$("#mCSV").onclick=exportCSV;
   $("#mImport").onchange=e=>{const f=e.target.files?.[0];if(f)importBackup(f)};
 }
