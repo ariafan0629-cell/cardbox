@@ -241,6 +241,14 @@ html,body{overflow-x:hidden;max-width:100%}
 .dz-side{display:flex;gap:6px;margin-bottom:8px}
 .dz-side button{flex:1;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:7px;border-radius:8px;font-size:.85rem}
 .dz-side button[aria-pressed="true"]{background:var(--ind-bg);color:var(--ind-fg);border-color:var(--ind-bg);font-weight:700}
+.dz-gallery{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x proximity;padding:2px 2px 10px;margin-bottom:4px;scrollbar-width:thin}
+.dz-thumb{flex:0 0 auto;scroll-snap-align:start;display:grid;gap:4px;justify-items:center;border:2px solid transparent;background:none;padding:3px;border-radius:10px;color:var(--ink);font-size:.78rem}
+.dz-thumb canvas{width:132px;height:80px;border-radius:5px;box-shadow:0 1px 4px rgba(0,0,0,.2);background:#fff;display:block}
+.dz-thumb[aria-pressed="true"]{border-color:var(--ink);font-weight:700}
+.dz-deco-opts{display:grid;gap:8px;margin:-2px 0 12px;padding:10px;border:1px solid var(--line);border-radius:10px}
+.dz-opt{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.dz-opt>span{font-size:.78rem;color:var(--muted);min-width:2.6em}
+.ichip.sm{padding:3px 10px;font-size:.78rem}
 .dz-tpl,.dz-colors{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
 .dz-sw{width:34px;height:34px;border-radius:50%;border:2px solid var(--surface);box-shadow:0 0 0 1px var(--line);padding:0;position:relative;overflow:hidden}
 .dz-sw[aria-pressed="true"]{box-shadow:0 0 0 2px var(--ink)}
@@ -852,7 +860,7 @@ async function showForm(c,fromMemo,prefill){
     if(ai.err){const m=ai.err;
       const why=/quota|429|RESOURCE_EXHAUSTED/i.test(m)?"今天的免費 AI 辨識次數用完了，明天會恢復":(!navigator.onLine||/Failed to fetch|NetworkError|network request|offline/i.test(m))?"沒有網路，AI 文字辨識沒有執行":m==="ai-off"?"AI 文字辨識沒有啟動，請確認有網路後重新打開名片盒":"AI 文字辨識這次失敗了";
       html+=`<small class="ai-code">${esc(why)}${qr.found?"；QR Code 的資料不受影響":""}。${m!=="ai-off"&&!/quota|429|RESOURCE_EXHAUSTED|Failed to fetch|NetworkError|offline/i.test(m)?"｜"+esc(m.slice(0,120)):""}</small>`;console.warn(m)}
-    if(!qr.found&&!n&&!ai.got&&qrDiag.px)html+=`<small class="ai-code">v30｜照片 ${esc(qrDiag.px)}｜ZXing ${esc(qrDiag.zx||"未執行")}｜jsQR ${esc(qrDiag.jsqr||"未執行")}</small>`;
+    if(!qr.found&&!n&&!ai.got&&qrDiag.px)html+=`<small class="ai-code">v31｜照片 ${esc(qrDiag.px)}｜ZXing ${esc(qrDiag.zx||"未執行")}｜jsQR ${esc(qrDiag.jsqr||"未執行")}</small>`;
     setHint(html,false);$("#aiBtn").hidden=false;
   }
   $("#aiBtn").onclick=()=>{if(!photos.length)return;(async()=>{const bs=(await Promise.all(photos.map(p=>p.blob||photoGet(p.key).catch(()=>null)))).filter(Boolean);readPhotos(bs)})()};
@@ -1056,7 +1064,7 @@ function showMenu(){
     <span class="btn filebtn">從備份檔還原<input id="mImport" type="file" accept="application/json,.json" aria-label="從備份檔還原"></span>
     <button class="btn" type="button" id="mCSV">匯出成 Excel 可開的 CSV</button>
   </div>
-  <p class="hint">目前共 ${cards.length} 張名片、${memos.length} 則待整理速記。備份會一起存。</p><p class="hint">名片盒版本 v30</p>`);
+  <p class="hint">目前共 ${cards.length} 張名片、${memos.length} 則待整理速記。備份會一起存。</p><p class="hint">名片盒版本 v31</p>`);
   $("#mMine").onclick=openMine;wireSync();$("#mExport").onclick=exportBackup;$("#mCSV").onclick=exportCSV;
   $("#mImport").onchange=e=>{const f=e.target.files?.[0];if(f)importBackup(f)};
 }
