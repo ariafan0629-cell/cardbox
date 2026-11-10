@@ -258,7 +258,29 @@ html,body{overflow-x:hidden;max-width:100%}
 .dz-logo img{object-fit:contain!important;background:#fff}
 .dz-check{display:flex;gap:8px;align-items:center;font-size:.86rem;color:var(--ink)}
 .dz-check input{width:18px;height:18px}
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(92px + env(safe-area-inset-bottom,0px));background:var(--black);color:var(--on-black);padding:9px 16px;border-radius:8px;z-index:40;font-size:.88rem;border:1px solid #3a3e45}
+.scan-ui{position:fixed;inset:0;z-index:70;background:#000;overflow:hidden;touch-action:none;color:#fff}
+.scan-ui video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.scan-guide{position:absolute;border-radius:16px;box-shadow:0 0 0 200vmax rgba(0,0,0,.55);transition:box-shadow .2s}
+.scan-guide .c{position:absolute;width:34px;height:34px;border:4px solid #fff;transition:border-color .15s}
+.scan-guide .tl{left:-2px;top:-2px;border-right:0;border-bottom:0;border-top-left-radius:16px}
+.scan-guide .tr{right:-2px;top:-2px;border-left:0;border-bottom:0;border-top-right-radius:16px}
+.scan-guide .bl{left:-2px;bottom:-2px;border-right:0;border-top:0;border-bottom-left-radius:16px}
+.scan-guide .br{right:-2px;bottom:-2px;border-left:0;border-top:0;border-bottom-right-radius:16px}
+.scan-guide.ok .c{border-color:#3ddc84}
+.scan-prog{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+.scan-prog rect{fill:none;stroke:#3ddc84;stroke-width:3;transition:stroke-dashoffset .1s linear}
+.scan-flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .18s}
+.scan-ui.flash .scan-flash{opacity:.85;transition:none}
+.scan-top{position:absolute;left:0;right:0;top:0;display:flex;justify-content:space-between;align-items:center;padding:calc(10px + env(safe-area-inset-top,0px)) max(14px,env(safe-area-inset-right,0px)) 10px max(14px,env(safe-area-inset-left,0px))}
+.scan-txt{background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:999px;padding:7px 14px;font-size:.88rem}
+.scan-count{font-size:.9rem;background:#3ddc84;color:#062;border-radius:999px;padding:4px 12px}
+.scan-msg{position:absolute;left:16px;right:16px;bottom:calc(132px + env(safe-area-inset-bottom,0px));text-align:center;font-size:1rem;font-weight:600;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+.scan-bar{position:absolute;left:0;right:0;bottom:0;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:16px max(20px,env(safe-area-inset-right,0px)) calc(22px + env(safe-area-inset-bottom,0px)) max(20px,env(safe-area-inset-left,0px))}
+.scan-done{justify-self:start;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:999px;padding:9px 18px;font-weight:700}
+.scan-shutter{width:72px;height:72px;border-radius:50%;border:4px solid #fff;background:rgba(255,255,255,.25);padding:0}
+.scan-shutter:active{background:#fff}
+.scan-hint{justify-self:end;font-size:.78rem;color:rgba(255,255,255,.75);text-align:right}
+.toast{position:fixed;z-index:80!important;left:50%;transform:translateX(-50%);bottom:calc(92px + env(safe-area-inset-bottom,0px));background:var(--black);color:var(--on-black);padding:9px 16px;border-radius:8px;z-index:40;font-size:.88rem;border:1px solid #3a3e45}
 @media (prefers-reduced-motion:no-preference){.sheet{animation:up .22s ease-out}@keyframes up{from{opacity:.4;translate:0 24px}to{opacity:1;translate:0 0}}}
 </style>
 </head>
@@ -725,7 +747,7 @@ async function showForm(c,fromMemo,prefill){
       <div class="legend">名片照片（可以放很多張）</div>
       <div class="pgrid" id="pgrid"></div>
       <div class="pick-btns">
-        <span class="btn primary filebtn">拍名片<input id="fCam" type="file" accept="image/*" capture="environment" aria-label="拍名片"></span>
+        <button class="btn primary" type="button" id="camBtn">拍名片</button><input id="fCam" type="file" accept="image/*" capture="environment" hidden aria-hidden="true">
         <span class="btn filebtn">從相簿選<input id="fPick" type="file" accept="image/*" multiple aria-label="從相簿選名片"></span>
         <button class="btn" type="button" id="aiBtn" hidden>AI 讀取名片</button>
       </div>
@@ -860,7 +882,7 @@ async function showForm(c,fromMemo,prefill){
     if(ai.err){const m=ai.err;
       const why=/quota|429|RESOURCE_EXHAUSTED/i.test(m)?"今天的免費 AI 辨識次數用完了，明天會恢復":(!navigator.onLine||/Failed to fetch|NetworkError|network request|offline/i.test(m))?"沒有網路，AI 文字辨識沒有執行":m==="ai-off"?"AI 文字辨識沒有啟動，請確認有網路後重新打開名片盒":"AI 文字辨識這次失敗了";
       html+=`<small class="ai-code">${esc(why)}${qr.found?"；QR Code 的資料不受影響":""}。${m!=="ai-off"&&!/quota|429|RESOURCE_EXHAUSTED|Failed to fetch|NetworkError|offline/i.test(m)?"｜"+esc(m.slice(0,120)):""}</small>`;console.warn(m)}
-    if(!qr.found&&!n&&!ai.got&&qrDiag.px)html+=`<small class="ai-code">v31｜照片 ${esc(qrDiag.px)}｜ZXing ${esc(qrDiag.zx||"未執行")}｜jsQR ${esc(qrDiag.jsqr||"未執行")}</small>`;
+    if(!qr.found&&!n&&!ai.got&&qrDiag.px)html+=`<small class="ai-code">v32｜照片 ${esc(qrDiag.px)}｜ZXing ${esc(qrDiag.zx||"未執行")}｜jsQR ${esc(qrDiag.jsqr||"未執行")}</small>`;
     setHint(html,false);$("#aiBtn").hidden=false;
   }
   $("#aiBtn").onclick=()=>{if(!photos.length)return;(async()=>{const bs=(await Promise.all(photos.map(p=>p.blob||photoGet(p.key).catch(()=>null)))).filter(Boolean);readPhotos(bs)})()};
@@ -873,6 +895,16 @@ async function showForm(c,fromMemo,prefill){
     drawPhotos();
   }
   $("#fCam").onchange=onFile;$("#fPick").onchange=onFile;drawPhotos();
+  /* live camera with an auto-capture frame; each shot is already cropped to the card */
+  async function addShot(b){try{const blob=await shrink(b,1800,.86);photos.push({key:null,blob,url:URL.createObjectURL(blob)});drawPhotos();readPhotos([b])}catch(e){toast("這張沒拍好，請再試一次")}}
+  $("#camBtn").onclick=()=>{
+    if(!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)||!isSecureContext){$("#fCam").click();return}
+    openCardScanner(addShot).catch(e=>{
+      const denied=/NotAllowed|Permission|Security/i.test(e&&e.name||String(e));
+      toast(denied?"沒有相機權限：請到手機設定允許名片盒使用相機，或改按「從相簿選」":"相機打不開，改用系統相機");
+      if(!denied)$("#fCam").click();
+    });
+  };
   photos.forEach(async p=>{if(!p.url&&p.key){p.url=await photoURL(p.key).catch(()=>"");if(pgrid.isConnected)drawPhotos()}});
   /* industries */
   const drawInds=()=>{
@@ -1064,7 +1096,7 @@ function showMenu(){
     <span class="btn filebtn">從備份檔還原<input id="mImport" type="file" accept="application/json,.json" aria-label="從備份檔還原"></span>
     <button class="btn" type="button" id="mCSV">匯出成 Excel 可開的 CSV</button>
   </div>
-  <p class="hint">目前共 ${cards.length} 張名片、${memos.length} 則待整理速記。備份會一起存。</p><p class="hint">名片盒版本 v31</p>`);
+  <p class="hint">目前共 ${cards.length} 張名片、${memos.length} 則待整理速記。備份會一起存。</p><p class="hint">名片盒版本 v32</p>`);
   $("#mMine").onclick=openMine;wireSync();$("#mExport").onclick=exportBackup;$("#mCSV").onclick=exportCSV;
   $("#mImport").onchange=e=>{const f=e.target.files?.[0];if(f)importBackup(f)};
 }
@@ -1217,6 +1249,13 @@ document.addEventListener("keydown",e=>{
   if(next){next.focus();if(next.select&&next.tagName==="INPUT")next.select();next.scrollIntoView({block:"center",behavior:"smooth"})}
   else el.blur();
 });
+
+/* ---------- live card scanner (loaded on first use) ---------- */
+let scannerLib=null;
+function openCardScanner(onCapture){
+  if(!scannerLib)scannerLib=new Promise((res,rej)=>{const sc=document.createElement("script");sc.src="lib/scanner.js";sc.onload=res;sc.onerror=()=>{scannerLib=null;rej(new Error("scanner"))};document.head.appendChild(sc)});
+  return scannerLib.then(()=>window.openScanner({onCapture,onClose:n=>{if(n)toast(`已加入 ${n} 張名片照片，正在讀取`)}}));
+}
 
 /* ---------- 設計我的名片 (loaded on first use) ---------- */
 let designerLib=null;
